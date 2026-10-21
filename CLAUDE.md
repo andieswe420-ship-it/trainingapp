@@ -25,13 +25,16 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    `training_plans` och id:t returneras direkt → planen genereras i bakgrunden
    (`EdgeRuntime.waitUntil`) → raden blir `ready`/`failed`. `PlanStore` pollar raden.
    Funktionen sammanfattar 90 dagars historik (`summary.ts`: daglig HRV-median, vilopuls,
-   veckobelastning, passlista) och anropar Claude (`claude-opus-5-5`, effort `medium`,
-   server-side fallback) med strukturerad output enligt `schema.ts` (Zod).
+   veckobelastning, passlista) och anropar Claude via **OpenRouter**
+   (`anthropic/claude-opus-5.5`, reserv `anthropic/claude-opus-5`, `reasoning.effort: medium`)
+   med strukturerad output (`response_format: json_schema`, strict) genererad från `schema.ts`
+   (Zod). Svaret valideras med Zod innan det sparas.
    Planformatet speglar WorkoutKit: uppvärmning/nedvarvning i minuter, block med
    `iterations` och steg med mål (time/distance/open) och larm (pulszon/pulsintervall/tempo).
    Ändras schemat måste `TrainingApp/Models/TrainingPlan.swift` följa med.
-   `ANTHROPIC_API_KEY` är en Edge Function-secret i Supabase – aldrig i appen eller repot.
-   Deploy: `supabase functions deploy plan-week` (eller Supabase MCP).
+   `OPENROUTER_API_KEY` är en Edge Function-secret i Supabase – aldrig i appen eller repot.
+   Deploy: `supabase functions deploy plan-week` (eller Supabase MCP – ange då
+   `import_map_path: deno.json`).
 4. **WorkoutKit** – (fas 4) appen hämtar planen och översätter den till
    `CustomWorkout`/`WorkoutPlan` och schemalägger med `WorkoutScheduler`.
    Användaren har en färdig `WorkoutScheduling.swift` som ska in i `TrainingApp/Scheduling/`.

@@ -1,7 +1,5 @@
 {
   "imports": {
-    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@0.137.0",
-    "@anthropic-ai/sdk/helpers/beta/zod": "npm:@anthropic-ai/sdk@0.137.0/helpers/beta/zod",
     "@supabase/supabase-js": "npm:@supabase/supabase-js@2.118.0",
     "zod": "npm:zod@4.6.7"
   }

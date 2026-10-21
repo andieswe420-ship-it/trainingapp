@@ -3,15 +3,21 @@
 // Flöde: appen anropar funktionen (med användarens JWT) → en rad med status 'pending'
 // skapas i training_plans och dess id returneras direkt → planen genereras i bakgrunden
 // (EdgeRuntime.waitUntil) → raden uppdateras till 'ready' eller 'failed'. Appen pollar raden.
+// Modellen anropas via OpenRouter (OPENROUTER_API_KEY).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import Anthropic from "@anthropic-ai/sdk";
-import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { type Plan, PlanSchema } from "./schema.ts";
 import { addDays, buildSummary, dayKey, type SampleRow, type WorkoutRow } from "./summary.ts";
 
-const MODEL = "claude-opus-5-5";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+/** Primär modell först; OpenRouter faller tillbaka på nästa vid fel eller överbelastning. */
+const MODELS = ["anthropic/claude-opus-5.5", "anthropic/claude-opus-5"];
+const MODEL = MODELS[0];
+/** Med effort "medium" reserveras ~hälften av max_tokens för resonemang. */
+const MAX_TOKENS = 48000;
+const REQUEST_TIMEOUT_MS = 300_000;
 const HISTORY_DAYS = 90;
 const PLAN_DAYS = 7;
 const PAGE_SIZE = 1000;
@@ -94,11 +100,16 @@ async function generatePlan(
     ]);
 
     const summary = buildSummary(workouts, samples, startDate);
-    const plan = await askClaude(summary, startDate, endDate, notes);
+    const { plan, model } = await askModel(summary, startDate, endDate, notes);
 
     const { error } = await supabase
       .from("training_plans")
-      .update({ status: "ready", plan: cleanPlan(plan, startDate, endDate), updated_at: new Date().toISOString() })
+      .update({
+        status: "ready",
+        plan: cleanPlan(plan, startDate, endDate),
+        model,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", planId);
     if (error) throw new Error(`Kunde inte spara planen: ${error.message}`);
   } catch (err) {
@@ -110,8 +121,26 @@ async function generatePlan(
   }
 }
 
-async function askClaude(summary: string, startDate: string, endDate: string, notes: string): Promise<Plan> {
-  const anthropic = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
+// JSON-schema för OpenRouters strukturerade output (strict: alla fält krävs,
+// additionalProperties: false – vilket z.toJSONSchema ger för z.object).
+const { $schema: _ignored, ...PLAN_JSON_SCHEMA } = z.toJSONSchema(PlanSchema, { target: "draft-7" });
+
+class PlanError extends Error {}
+
+interface ChatCompletion {
+  model?: string;
+  choices?: { finish_reason?: string | null; message?: { content?: string | null } }[];
+  error?: { code?: number | string; message?: string };
+}
+
+async function askModel(
+  summary: string,
+  startDate: string,
+  endDate: string,
+  notes: string,
+): Promise<{ plan: Plan; model: string }> {
+  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
+  if (!apiKey) throw new PlanError("OPENROUTER_API_KEY saknas i Supabase (Edge Functions → Secrets).");
 
   const userContent = [
     `Planera träningen ${startDate} till ${endDate} (idag är ${startDate}).`,
@@ -119,27 +148,71 @@ async function askClaude(summary: string, startDate: string, endDate: string, no
     `\n# Data\n${summary}`,
   ].join("\n");
 
-  const stream = anthropic.beta.messages.stream({
-    model: MODEL,
-    max_tokens: 32000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "medium", format: betaZodOutputFormat(PlanSchema) },
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userContent }],
+  const response = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "X-Title": "TrainingApp",
+    },
+    body: JSON.stringify({
+      models: MODELS,
+      max_tokens: MAX_TOKENS,
+      reasoning: { effort: "medium" },
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "training_plan", strict: true, schema: PLAN_JSON_SCHEMA },
+      },
+      // Skicka bara till leverantörer som faktiskt stöder strukturerad output.
+      provider: { require_parameters: true },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userContent },
+      ],
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  const message = await stream.finalMessage();
 
-  if (message.stop_reason === "refusal") {
-    throw new Error("AI-coachen avböjde att skapa en plan. Försök igen med andra önskemål.");
+  const body = await response.json().catch(() => ({})) as ChatCompletion;
+  if (!response.ok || body.error) {
+    throw new PlanError(openRouterError(response.status, body.error?.message));
   }
-  if (message.stop_reason === "max_tokens") {
-    throw new Error("Planen blev för lång och avbröts. Försök igen.");
+
+  const choice = body.choices?.[0];
+  if (choice?.finish_reason === "length") {
+    throw new PlanError("Planen blev för lång och avbröts. Försök igen.");
   }
-  if (!message.parsed_output) {
-    throw new Error("AI-coachen returnerade ingen giltig plan.");
+  if (choice?.finish_reason === "content_filter") {
+    throw new PlanError("AI-coachen avböjde att skapa en plan. Försök igen med andra önskemål.");
   }
-  return message.parsed_output;
+  const content = choice?.message?.content;
+  if (!content) throw new PlanError("AI-coachen returnerade ingen plan.");
+
+  let json: unknown;
+  try {
+    json = JSON.parse(content);
+  } catch {
+    throw new PlanError("AI-coachen returnerade ogiltig JSON. Försök igen.");
+  }
+  const parsed = PlanSchema.safeParse(json);
+  if (!parsed.success) {
+    console.error("plan schema mismatch", parsed.error.issues.slice(0, 5));
+    throw new PlanError("AI-coachens plan hade fel format. Försök igen.");
+  }
+  return { plan: parsed.data, model: body.model ?? MODEL };
+}
+
+function openRouterError(status: number, message?: string): string {
+  switch (status) {
+    case 401:
+      return "Fel API-nyckel för OpenRouter (OPENROUTER_API_KEY).";
+    case 402:
+      return "Slut på krediter hos OpenRouter. Fyll på på openrouter.ai.";
+    case 429:
+      return "AI-tjänsten är överbelastad just nu. Försök igen om en stund.";
+    default:
+      return `AI-tjänsten svarade med fel ${status}${message ? `: ${message}` : ""}.`;
+  }
 }
 
 /** Håller passen inom perioden, sorterade, och rimliga värden för WorkoutKit. */
@@ -181,10 +254,9 @@ async function fetchAll<T>(
 }
 
 function errorMessage(err: unknown): string {
-  if (err instanceof Anthropic.APIError) {
-    if (err.status === 401) return "Fel API-nyckel för Claude (ANTHROPIC_API_KEY).";
-    if (err.status === 429) return "AI-tjänsten är överbelastad just nu. Försök igen om en stund.";
-    return `AI-tjänsten svarade med fel ${err.status}.`;
+  if (err instanceof PlanError) return err.message;
+  if (err instanceof DOMException && err.name === "TimeoutError") {
+    return "AI-tjänsten svarade inte i tid. Försök igen.";
   }
   return err instanceof Error ? err.message : String(err);
 }
