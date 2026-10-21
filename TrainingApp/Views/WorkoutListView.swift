@@ -18,7 +18,9 @@ struct WorkoutListView: View {
     @ViewBuilder
     private var content: some View {
         switch health.state {
-        case .idle, .loading where health.workouts.isEmpty:
+        case .idle:
+            ProgressView("Hämtar från Hälsa…")
+        case .loading where health.workouts.isEmpty:
             ProgressView("Hämtar från Hälsa…")
         case .failed(let message) where health.workouts.isEmpty:
             ContentUnavailableView {
