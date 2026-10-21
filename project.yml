@@ -11,8 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    # Sätt ditt Team ID här (eller i Xcode) för att köra på riktig enhet.
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: "L9JH53FJU9"
 
 targets:
   TrainingApp:

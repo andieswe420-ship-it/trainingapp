@@ -72,4 +72,4 @@ Med XcodeBuildMCP: kör `xcodegen generate` först, sedan `build_run_sim` med
 projekt `TrainingApp.xcodeproj`, scheme `TrainingApp`.
 
 Simulatorn har ingen träningsdata – lägg till pass/puls manuellt i Hälsa-appen i
-simulatorn för att testa listan. För riktig enhet: sätt `DEVELOPMENT_TEAM` i `project.yml`.
+simulatorn för att testa listan. Team ID (`DEVELOPMENT_TEAM`) är satt i `project.yml` – ändra där, inte i Xcode.
