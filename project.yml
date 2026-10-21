@@ -13,6 +13,11 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: "L9JH53FJU9"
 
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: "2.0.0"
+
 targets:
   TrainingApp:
     type: application
@@ -22,6 +27,10 @@ targets:
     dependencies:
       - sdk: HealthKit.framework
       - sdk: WorkoutKit.framework
+      - package: Supabase
+    configFiles:
+      Debug: Config/App.xcconfig
+      Release: Config/App.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.andieswe420.TrainingApp
@@ -36,6 +45,8 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        SupabaseHost: $(SUPABASE_HOST)
+        SupabasePublishableKey: $(SUPABASE_PUBLISHABLE_KEY)
         NSHealthShareUsageDescription: >-
           Appen läser dina träningspass, vilopuls, pulsvariabilitet (HRV) och
           VO2 max från Hälsa för att visa din träningshistorik och planera

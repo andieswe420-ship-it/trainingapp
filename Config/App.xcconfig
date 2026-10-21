@@ -1,0 +1,7 @@
+// Gemensam konfiguration. Hemliga/lokala värden ligger i Secrets.xcconfig
+// (gitignorerad) – kopiera Secrets.xcconfig.example och fyll i.
+// OBS: "//" startar en kommentar i xcconfig, därför anges bara värdnamnet (utan https://).
+SUPABASE_HOST =
+SUPABASE_PUBLISHABLE_KEY =
+
+#include? "Secrets.xcconfig"

@@ -18,6 +18,8 @@ final class HealthKitManager {
 
     private(set) var workouts: [WorkoutSummary] = []
     private(set) var metrics: HealthMetrics = .empty
+    /// Mätningshistorik (vilopuls, HRV, VO2 max) för samma period som passen.
+    private(set) var samples: [HealthSample] = []
     private(set) var state: LoadState = .idle
 
     var isHealthDataAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
@@ -72,9 +74,12 @@ final class HealthKitManager {
 
     private func load() async throws {
         async let workouts = fetchWorkouts()
-        async let resting = latestSample(.restingHeartRate, unit: HKUnit.count().unitDivided(by: .minute()))
-        async let hrv = latestSample(.heartRateVariabilitySDNN, unit: .secondUnit(with: .milli))
-        async let vo2 = latestSample(.vo2Max, unit: HKUnit(from: "ml/kg*min"))
+        async let resting = latestSample(.restingHeartRate)
+        async let hrv = latestSample(.heartRateVariability)
+        async let vo2 = latestSample(.vo2Max)
+        async let restingHistory = fetchSamples(.restingHeartRate)
+        async let hrvHistory = fetchSamples(.heartRateVariability)
+        async let vo2History = fetchSamples(.vo2Max)
 
         self.workouts = try await workouts
         self.metrics = HealthMetrics(
@@ -82,13 +87,17 @@ final class HealthKitManager {
             heartRateVariability: try await hrv,
             vo2Max: try await vo2
         )
+        self.samples = try await restingHistory + hrvHistory + vo2History
+    }
+
+    private var historyPredicate: NSPredicate {
+        let end = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -Self.historyDays, to: end) ?? end
+        return HKQuery.predicateForSamples(withStart: start, end: end)
     }
 
     private func fetchWorkouts() async throws -> [WorkoutSummary] {
-        let end = Date()
-        let start = Calendar.current.date(byAdding: .day, value: -Self.historyDays, to: end) ?? end
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
-
+        let predicate = historyPredicate
         let descriptor = HKSampleQueryDescriptor(
             predicates: [.workout(predicate)],
             sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)]
@@ -97,13 +106,46 @@ final class HealthKitManager {
         return result.map(WorkoutSummary.init(workout:))
     }
 
-    private func latestSample(_ identifier: HKQuantityTypeIdentifier, unit: HKUnit) async throws -> MetricSample? {
+    private func latestSample(_ kind: HealthSample.Kind) async throws -> MetricSample? {
         let descriptor = HKSampleQueryDescriptor(
-            predicates: [.quantitySample(type: HKQuantityType(identifier))],
+            predicates: [.quantitySample(type: kind.quantityType)],
             sortDescriptors: [SortDescriptor(\.endDate, order: .reverse)],
             limit: 1
         )
         guard let sample = try await descriptor.result(for: store).first else { return nil }
-        return MetricSample(value: sample.quantity.doubleValue(for: unit), date: sample.endDate)
+        return MetricSample(value: sample.quantity.doubleValue(for: kind.unit), date: sample.endDate)
+    }
+
+    private func fetchSamples(_ kind: HealthSample.Kind) async throws -> [HealthSample] {
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: kind.quantityType, predicate: historyPredicate)],
+            sortDescriptors: [SortDescriptor(\.endDate, order: .reverse)]
+        )
+        return try await descriptor.result(for: store).map { sample in
+            HealthSample(
+                id: sample.uuid,
+                kind: kind,
+                value: sample.quantity.doubleValue(for: kind.unit),
+                date: sample.endDate
+            )
+        }
+    }
+}
+
+private extension HealthSample.Kind {
+    var quantityType: HKQuantityType {
+        switch self {
+        case .restingHeartRate: HKQuantityType(.restingHeartRate)
+        case .heartRateVariability: HKQuantityType(.heartRateVariabilitySDNN)
+        case .vo2Max: HKQuantityType(.vo2Max)
+        }
+    }
+
+    var unit: HKUnit {
+        switch self {
+        case .restingHeartRate: HKUnit.count().unitDivided(by: .minute())
+        case .heartRateVariability: .secondUnit(with: .milli)
+        case .vo2Max: HKUnit(from: "ml/kg*min")
+        }
     }
 }
