@@ -32,13 +32,13 @@ final class PlanStore {
     }
 
     /// Synkar först senaste HealthKit-datan så att planen bygger på färska värden.
-    func generate(notes: String, workouts: [WorkoutSummary], samples: [HealthSample]) async {
+    func generate(notes: String, workouts: [WorkoutSummary], samples: [HealthSample], daily: [DailyMetrics]) async {
         guard !isPlanning else { return }
         isWorking = true
         errorMessage = nil
         defer { isWorking = false }
 
-        await sync.sync(workouts: workouts, samples: samples)
+        await sync.sync(workouts: workouts, samples: samples, daily: daily)
         do {
             let id = try await sync.requestPlan(notes: notes)
             await waitForPlan(id: id)

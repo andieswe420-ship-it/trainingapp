@@ -3,6 +3,7 @@ import SwiftUI
 struct WorkoutListView: View {
     @Environment(HealthKitManager.self) private var health
     @Environment(SyncService.self) private var sync
+    @Environment(CoachStore.self) private var coach
     @State private var showAccount = false
 
     var body: some View {
@@ -57,7 +58,9 @@ struct WorkoutListView: View {
 
     private func syncNow() async {
         guard health.state == .loaded else { return }
-        await sync.sync(workouts: health.workouts, samples: health.samples)
+        await sync.sync(workouts: health.workouts, samples: health.samples, daily: health.dailyMetrics)
+        // Synken kan ha fått coachen att fråga om ett nytt pass.
+        await coach.refresh()
     }
 
     private var syncStatusText: String {
@@ -126,4 +129,5 @@ struct WorkoutListView: View {
     WorkoutListView()
         .environment(HealthKitManager())
         .environment(SyncService())
+        .environment(CoachStore(sync: SyncService()))
 }

@@ -11,12 +11,16 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 
 1. **HealthKit** – källan för all rådata. `HealthKitManager` är det enda stället som pratar
    med `HKHealthStore`. Data mappas direkt till appens egna värdetyper
-   (`WorkoutSummary`, `HealthMetrics`) så att resten av appen aldrig ser `HK*`-objekt
-   (förutom aktivitetstypen).
+   (`WorkoutSummary`, `HealthSample`, `DailyMetrics`, `HealthMetrics`) så att resten av appen
+   aldrig ser `HK*`-objekt (förutom aktivitetstypen). Per pass: snitt-/maxpuls, pulsfördelning
+   i 10-bpm-intervall, pulsåterhämtning och löpdynamik. Per dag: sömn (faser, räknas till
+   dagen man vaknar, en källa per natt), steg, aktiv energi, träningsminuter, ståtimmar,
+   andningsfrekvens och handledstemperatur. Saknad behörighet för en typ ger bara tom data.
 2. **Supabase** – projekt `trainingapp` (ref `whuleymkapsysrjxyfyx`, eu-north-1).
    `SyncService` är det enda stället som pratar med `SupabaseClient`. Synkar
-   `WorkoutSummary` → tabellen `workouts` och `HealthSample` → `health_samples`, idempotent
-   upsert på HealthKits UUID. `user_id` sätts av databasen (`default auth.uid()`), RLS
+   `WorkoutSummary` → `workouts`, `HealthSample` → `health_samples` (upsert på HealthKits UUID)
+   och `DailyMetrics` → `daily_metrics` (upsert på `user_id,date`). Efter varje synk anropas
+   coachens `checkin`. `user_id` sätts av databasen (`default auth.uid()`), RLS
    begränsar allt till egna rader. Inloggning: e-post + lösenord (Supabase Auth).
    Schemat ligger i `supabase/migrations/` – nya ändringar läggs som nya migrationsfiler.
    URL/nyckel läggs i `Config/Secrets.xcconfig` (gitignorerad), aldrig i koden.
@@ -32,9 +36,17 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    Planformatet speglar WorkoutKit: uppvärmning/nedvarvning i minuter, block med
    `iterations` och steg med mål (time/distance/open) och larm (pulszon/pulsintervall/tempo).
    Ändras schemat måste `TrainingApp/Models/TrainingPlan.swift` följa med.
+   **Coach** – Edge Function `coach` (`supabase/functions/coach/`), chatt i fliken "Coach".
+   Åtgärder: `send` (användarmeddelande → svar), `checkin` (fråga om senaste passet inom 48 h,
+   max en gång per pass via unikt index), `decide` (godkänn/avböj förslag). Svar skapas som
+   `pending` i `coach_messages` och fylls i bakgrunden; `CoachStore` pollar. Coachen ser samma
+   kontext som planeraren plus aktuell plan (med genomförda pass) och konversationen, och kan
+   föreslå ändringar via verktyget `propose_plan_change` (hela passlistan för idag–planens
+   slut). Förslag tillämpas bara när användaren godkänner. Effort `low`, kontexten cachas.
+   Delad serverkod ligger i `supabase/functions/_shared/` (kontext, schema, OpenRouter, auth).
    `OPENROUTER_API_KEY` är en Edge Function-secret i Supabase – aldrig i appen eller repot.
-   Deploy: `supabase functions deploy plan-week` (eller Supabase MCP – ange då
-   `import_map_path: deno.json`).
+   Deploy: `supabase functions deploy plan-week coach` (eller Supabase MCP – ange då
+   `import_map_path: deno.json` och skicka med `_shared`-filerna som `../_shared/<fil>`).
 4. **WorkoutKit** – (fas 4) appen hämtar planen och översätter den till
    `CustomWorkout`/`WorkoutPlan` och schemalägger med `WorkoutScheduler`.
    Användaren har en färdig `WorkoutScheduling.swift` som ska in i `TrainingApp/Scheduling/`.
@@ -48,6 +60,8 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
       visa lista med datum, typ, tid och snittpuls. HealthKit-/WorkoutKit-behörigheter.
 - [x] **Fas 2** – Synk till Supabase (inloggning, synk vid start/dra-för-att-uppdatera/knapp).
 - [x] **Fas 3** – AI-planering (Edge Function `plan-week`, flik "Plan" i appen).
+- [x] **Fas 3b** – Löpande coach (chatt, frågor efter pass, förslag på planändringar) och
+      utökad hälsodata (sömn, aktivitet, andning, temperatur, löpdynamik, pulsfördelning).
 - [ ] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
 
 ## Projektstruktur
@@ -56,12 +70,13 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 project.yml                 XcodeGen-spec – ENDA källan för projektinställningar
 Config/                     App.xcconfig (incheckad) + Secrets.xcconfig (gitignorerad)
 supabase/migrations/        Databasschema (SQL)
-supabase/functions/         Edge Functions (plan-week)
+supabase/functions/         Edge Functions (plan-week, coach, _shared)
 TrainingApp/
   App/                      @main-app
   HealthKit/                HealthKitManager (läsning, behörighet)
-  Models/                   WorkoutSummary, HealthSample, HealthMetrics, TrainingPlan, svenska namn
-  Planning/                 PlanStore (beställ plan, polla tills klar)
+  Models/                   WorkoutSummary, HealthSample, DailyMetrics, HealthMetrics, TrainingPlan,
+                            CoachMessage, svenska namn
+  Planning/                 PlanStore, CoachStore (beställ/skicka, polla tills klart)
   Sync/                     SyncService (Supabase-auth + upsert), DTO:er, konfiguration
   Views/                    SwiftUI-vyer
   Scheduling/               WorkoutKit (behörighet nu, schemaläggning i fas 4)

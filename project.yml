@@ -48,9 +48,9 @@ targets:
         SupabaseHost: $(SUPABASE_HOST)
         SupabasePublishableKey: $(SUPABASE_PUBLISHABLE_KEY)
         NSHealthShareUsageDescription: >-
-          Appen läser dina träningspass, vilopuls, pulsvariabilitet (HRV) och
-          VO2 max från Hälsa för att visa din träningshistorik och planera
-          kommande pass.
+          Appen läser dina träningspass, puls, pulsvariabilitet (HRV), VO2 max,
+          sömn, steg, aktivitet, andningsfrekvens och handledstemperatur från
+          Hälsa så att din coach kan följa formen och planera kommande pass.
         NSHealthUpdateUsageDescription: >-
           Appen behöver skrivbehörighet till Hälsa för att kunna spara och
           schemalägga träningspass som skickas till din Apple Watch.

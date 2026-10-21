@@ -54,7 +54,12 @@ struct PlanView: View {
                 .lineLimit(2...5)
             Button {
                 Task {
-                    await store.generate(notes: notes, workouts: health.workouts, samples: health.samples)
+                    await store.generate(
+                        notes: notes,
+                        workouts: health.workouts,
+                        samples: health.samples,
+                        daily: health.dailyMetrics
+                    )
                 }
             } label: {
                 Label(store.plan == nil ? "Skapa veckoplan" : "Skapa ny veckoplan", systemImage: "sparkles")

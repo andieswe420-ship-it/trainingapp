@@ -63,8 +63,9 @@ final class SyncService {
 
     // MARK: - Synk
 
-    /// Laddar upp pass och mätningar. Idempotent: upsert på HealthKit-UUID.
-    func sync(workouts: [WorkoutSummary], samples: [HealthSample]) async {
+    /// Laddar upp pass, mätningar och dagsvärden. Idempotent: upsert på HealthKit-UUID respektive datum.
+    /// Efter en lyckad synk får coachen chansen att fråga om ett nytt pass.
+    func sync(workouts: [WorkoutSummary], samples: [HealthSample], daily: [DailyMetrics]) async {
         guard let client, isSignedIn else { return }
         guard syncState != .syncing else { return }
         syncState = .syncing
@@ -75,13 +76,18 @@ final class SyncService {
             for batch in samples.map(HealthSampleRecord.init).chunked(into: Self.batchSize) {
                 try await client.from("health_samples").upsert(batch, onConflict: "id").execute()
             }
+            for batch in daily.map(DailyMetricsRecord.init).chunked(into: Self.batchSize) {
+                try await client.from("daily_metrics").upsert(batch, onConflict: "user_id,date").execute()
+            }
             let now = Date()
             lastSyncedAt = now
             UserDefaults.standard.set(now, forKey: Self.lastSyncKey)
             syncState = .idle
         } catch {
             syncState = .failed(error.localizedDescription)
+            return
         }
+        try? await requestCheckin()
     }
 }
 
@@ -121,6 +127,57 @@ extension SyncService {
             .execute()
             .value
         return plans.first
+    }
+}
+
+// MARK: - Coach
+
+extension SyncService {
+    private struct CoachRequest: Encodable {
+        let action: String
+        var text: String?
+        var messageId: UUID?
+        var accept: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case action, text, accept
+            case messageId = "message_id"
+        }
+    }
+
+    private struct CoachResponse: Decodable {}
+
+    func sendCoachMessage(_ text: String) async throws {
+        try await invokeCoach(CoachRequest(action: "send", text: text))
+    }
+
+    /// Ber coachen fråga om det senaste passet, om den inte redan gjort det.
+    func requestCheckin() async throws {
+        try await invokeCoach(CoachRequest(action: "checkin"))
+    }
+
+    func decideProposal(messageId: UUID, accept: Bool) async throws {
+        try await invokeCoach(CoachRequest(action: "decide", messageId: messageId, accept: accept))
+    }
+
+    func fetchCoachMessages(limit: Int = 100) async throws -> [CoachMessage] {
+        guard let client else { throw SyncError.notConfigured }
+        let messages: [CoachMessage] = try await client.from("coach_messages")
+            .select()
+            .order("created_at", ascending: false)
+            .limit(limit)
+            .execute()
+            .value
+        return messages.reversed()
+    }
+
+    private func invokeCoach(_ request: CoachRequest) async throws {
+        guard let client else { throw SyncError.notConfigured }
+        guard isSignedIn else { throw SyncError.notSignedIn }
+        let _: CoachResponse = try await client.functions.invoke(
+            "coach",
+            options: FunctionInvokeOptions(body: request)
+        )
     }
 }
 
