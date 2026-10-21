@@ -19,7 +19,7 @@ final class SyncService {
     var isConfigured: Bool { client != nil }
     var isSignedIn: Bool { userEmail != nil }
 
-    private let client: SupabaseClient?
+    fileprivate let client: SupabaseClient?
     private static let lastSyncKey = "lastSyncedAt"
     private static let batchSize = 500
 
@@ -85,13 +85,55 @@ final class SyncService {
     }
 }
 
+// MARK: - Veckoplan
+
+extension SyncService {
+    /// Beställer en ny veckoplan. Planen genereras i bakgrunden – hämta den med `fetchPlan(id:)`.
+    func requestPlan(notes: String) async throws -> UUID {
+        guard let client else { throw SyncError.notConfigured }
+        guard isSignedIn else { throw SyncError.notSignedIn }
+        struct Body: Encodable { let notes: String }
+        struct Response: Decodable { let id: UUID }
+        let response: Response = try await client.functions.invoke(
+            "plan-week",
+            options: FunctionInvokeOptions(body: Body(notes: notes))
+        )
+        return response.id
+    }
+
+    func fetchPlan(id: UUID) async throws -> TrainingPlan? {
+        guard let client else { throw SyncError.notConfigured }
+        let plans: [TrainingPlan] = try await client.from("training_plans")
+            .select()
+            .eq("id", value: id.uuidString)
+            .limit(1)
+            .execute()
+            .value
+        return plans.first
+    }
+
+    func fetchLatestPlan() async throws -> TrainingPlan? {
+        guard let client else { throw SyncError.notConfigured }
+        let plans: [TrainingPlan] = try await client.from("training_plans")
+            .select()
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+        return plans.first
+    }
+}
+
 enum SyncError: LocalizedError {
     case notConfigured
+    case notSignedIn
 
     var errorDescription: String? {
         switch self {
         case .notConfigured:
             "Supabase är inte konfigurerat. Skapa Config/Secrets.xcconfig och bygg om appen."
+        case .notSignedIn:
+            "Du behöver logga in först."
         }
     }
 }
