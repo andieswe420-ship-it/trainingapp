@@ -1,0 +1,59 @@
+name: TrainingApp
+options:
+  bundleIdPrefix: com.andieswe420
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: sv
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Sätt ditt Team ID här (eller i Xcode) för att köra på riktig enhet.
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  TrainingApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: TrainingApp
+    dependencies:
+      - sdk: HealthKit.framework
+      - sdk: WorkoutKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.andieswe420.TrainingApp
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    info:
+      path: TrainingApp/Info.plist
+      properties:
+        CFBundleDisplayName: Träning
+        CFBundleDevelopmentRegion: sv
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSHealthShareUsageDescription: >-
+          Appen läser dina träningspass, vilopuls, pulsvariabilitet (HRV) och
+          VO2 max från Hälsa för att visa din träningshistorik och planera
+          kommande pass.
+        NSHealthUpdateUsageDescription: >-
+          Appen behöver skrivbehörighet till Hälsa för att kunna spara och
+          schemalägga träningspass som skickas till din Apple Watch.
+    entitlements:
+      path: TrainingApp/TrainingApp.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+
+schemes:
+  TrainingApp:
+    build:
+      targets:
+        TrainingApp: all
+    run:
+      config: Debug

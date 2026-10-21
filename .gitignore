@@ -1,0 +1,15 @@
+# Genereras av XcodeGen – redigera project.yml istället
+*.xcodeproj/
+TrainingApp/Info.plist
+TrainingApp/TrainingApp.entitlements
+
+# Xcode
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+
+# Hemligheter (Supabase-nycklar m.m. i senare faser)
+Secrets.xcconfig
+*.env
