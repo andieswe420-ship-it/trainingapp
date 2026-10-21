@@ -181,6 +181,25 @@ extension SyncService {
     }
 }
 
+// MARK: - Profil
+
+extension SyncService {
+    func fetchProfile() async throws -> AthleteProfile {
+        guard let client else { throw SyncError.notConfigured }
+        let profiles: [AthleteProfile] = try await client.from("athlete_profiles")
+            .select()
+            .limit(1)
+            .execute()
+            .value
+        return profiles.first ?? .empty
+    }
+
+    func saveProfile(_ profile: AthleteProfile) async throws {
+        guard let client else { throw SyncError.notConfigured }
+        try await client.from("athlete_profiles").upsert(profile, onConflict: "user_id").execute()
+    }
+}
+
 enum SyncError: LocalizedError {
     case notConfigured
     case notSignedIn

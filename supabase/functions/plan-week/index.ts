@@ -8,7 +8,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { userClient } from "../_shared/auth.ts";
-import { addDays, buildSummary, dayKey, loadAthleteData } from "../_shared/context.ts";
+import { addDays, buildSummary, dayKey, describeProfile, loadAthleteData, loadProfile } from "../_shared/context.ts";
 import { AIError, chat, errorMessage, json, MODELS } from "../_shared/openrouter.ts";
 import { cleanWorkouts, type Plan, PlanSchema } from "../_shared/schema.ts";
 
@@ -35,6 +35,8 @@ Så här resonerar du:
 - Fördela belastningen: högst två hårda pass i veckan, aldrig två hårda dagar i rad, och minst en vilodag.
 - Använd personens egna tempon och pulsnivåer från historiken när du sätter mål. Pulszoner 1-5 avser
   klockans standardzoner; ange hellre ett pulsintervall i bpm när du kan härleda det ur historiken.
+- Följ personens profil: lägg pass på de veckodagar och av den typ som veckoschemat anger (vila på
+  vilodagarna), och ta hänsyn till mål och skador. Anpassa intensitet och längd efter formen.
 - Följ personens önskemål om de anges, men säg ifrån i texten om något är orimligt givet återhämtningen.
 
 Formatet ska kunna läggas in direkt som pass på klockan:
@@ -78,8 +80,8 @@ async function generatePlan(
   notes: string,
 ) {
   try {
-    const data = await loadAthleteData(supabase, HISTORY_DAYS);
-    const summary = buildSummary(data, startDate);
+    const [data, profile] = await Promise.all([loadAthleteData(supabase, HISTORY_DAYS), loadProfile(supabase)]);
+    const summary = `# Personens profil\n${describeProfile(profile)}\n\n# Data\n${buildSummary(data, startDate)}`;
     const { plan, model } = await askModel(summary, startDate, endDate, notes);
 
     const { error } = await supabase
@@ -109,8 +111,8 @@ async function askModel(
 ): Promise<{ plan: Plan; model: string }> {
   const userContent = [
     `Planera träningen ${startDate} till ${endDate} (idag är ${startDate}).`,
-    notes ? `\nPersonens önskemål:\n${notes}` : "\nPersonen har inte angett några särskilda önskemål.",
-    `\n# Data\n${summary}`,
+    notes ? `\nPersonens önskemål för just den här veckan:\n${notes}` : "",
+    `\n${summary}`,
   ].join("\n");
 
   const result = await chat({

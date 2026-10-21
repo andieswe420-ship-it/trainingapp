@@ -43,6 +43,12 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    kontext som planeraren plus aktuell plan (med genomförda pass) och konversationen, och kan
    föreslå ändringar via verktyget `propose_plan_change` (hela passlistan för idag–planens
    slut). Förslag tillämpas bara när användaren godkänner. Effort `low`, kontexten cachas.
+   **Profil** – `athlete_profiles` (mål, veckoschema per veckodag, skador/begränsningar,
+   övrigt). Både coach och planerare läser den (`describeProfile` i `_shared/context.ts`);
+   planeraren följer veckoschemat. Coachen sparar bestående saker själv via verktyget
+   `update_profile` (utan godkännande, veckodagar slås ihop) och det visas i chatten
+   (`coach_messages.profile_update`). Användaren kan redigera profilen i `ProfileView`
+   (knapp i Plan- och Coach-fliken).
    Delad serverkod ligger i `supabase/functions/_shared/` (kontext, schema, OpenRouter, auth).
    `OPENROUTER_API_KEY` är en Edge Function-secret i Supabase – aldrig i appen eller repot.
    Deploy: `supabase functions deploy plan-week coach` (eller Supabase MCP – ange då
@@ -62,6 +68,7 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 - [x] **Fas 3** – AI-planering (Edge Function `plan-week`, flik "Plan" i appen).
 - [x] **Fas 3b** – Löpande coach (chatt, frågor efter pass, förslag på planändringar) och
       utökad hälsodata (sömn, aktivitet, andning, temperatur, löpdynamik, pulsfördelning).
+- [x] **Fas 3c** – Träningsprofil (mål, veckoschema, skador) som coach och planerare följer.
 - [ ] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
 
 ## Projektstruktur
@@ -75,7 +82,7 @@ TrainingApp/
   App/                      @main-app
   HealthKit/                HealthKitManager (läsning, behörighet)
   Models/                   WorkoutSummary, HealthSample, DailyMetrics, HealthMetrics, TrainingPlan,
-                            CoachMessage, svenska namn
+                            CoachMessage, AthleteProfile, svenska namn
   Planning/                 PlanStore, CoachStore (beställ/skicka, polla tills klart)
   Sync/                     SyncService (Supabase-auth + upsert), DTO:er, konfiguration
   Views/                    SwiftUI-vyer

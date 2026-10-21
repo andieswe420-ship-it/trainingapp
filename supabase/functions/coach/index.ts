@@ -21,14 +21,18 @@ import {
   dayKey,
   describePlan,
   describePlannedWorkout,
+  describeProfile,
   describeWorkout,
   loadActivePlan,
   loadAthleteData,
+  loadProfile,
   type PlanRow,
+  type ProfileRow,
   weekday,
+  WEEKDAYS,
   type WorkoutRow,
 } from "../_shared/context.ts";
-import { chat, type ChatMessage, errorMessage, json, MODELS } from "../_shared/openrouter.ts";
+import { chat, type ChatMessage, errorMessage, json, MODELS, type ToolCall } from "../_shared/openrouter.ts";
 import { cleanWorkouts, WorkoutSchema } from "../_shared/schema.ts";
 
 const HISTORY_DAYS = 90;
@@ -44,6 +48,18 @@ const ProposalInputSchema = z.object({
   ),
 });
 const { $schema: _ignored, ...PROPOSAL_JSON_SCHEMA } = z.toJSONSchema(ProposalInputSchema, { target: "draft-7" });
+
+const dayText = z.string().describe("Vad dagen ska innehålla, t.ex. \"Vila\" eller \"Intervaller inomhus\". Tom sträng = flexibel.");
+const ProfileUpdateSchema = z.object({
+  summary: z.string().describe("Kort beskrivning på svenska av vad som ändrades i profilen."),
+  goals: z.string().optional().describe("Personens mål – hela den nya texten."),
+  weekly_schedule: z.object(Object.fromEntries(WEEKDAYS.map(([key]) => [key, dayText.optional()])))
+    .optional()
+    .describe("Dagar som ändras i veckoschemat. Dagar som utelämnas behålls."),
+  limitations: z.string().optional().describe("Skador och begränsningar – hela den nya texten."),
+  notes: z.string().optional().describe("Övriga bestående preferenser – hela den nya texten."),
+});
+const { $schema: _ignored2, ...PROFILE_JSON_SCHEMA } = z.toJSONSchema(ProfileUpdateSchema, { target: "draft-7" });
 
 interface Proposal {
   reason: string;
@@ -61,6 +77,7 @@ interface MessageRow {
   proposal: Proposal | null;
   proposal_status: "pending" | "accepted" | "rejected" | null;
   plan_id: string | null;
+  profile_update: { summary: string } | null;
   created_at: string;
 }
 
@@ -83,6 +100,10 @@ Så här coachar du:
   föreslår. Föreslå bara ändringar när det finns en tydlig anledning. Ändra aldrig planen på annat sätt.
 - Finns ingen aktiv plan kan du inte föreslå ändringar; tipsa då om att skapa en ny veckoplan under
   fliken Plan.
+- Personens profil (mål, veckoschema, skador, övrigt) är det som gäller långsiktigt och används även när
+  nya veckoplaner skapas. När personen berättar något bestående – nytt veckoschema, mål, skada,
+  preferens – spara det med verktyget update_profile och nämn kort att du uppdaterat profilen. Tillfälliga
+  saker (t.ex. "jag är bortrest i helgen") sparas inte i profilen. Följ veckoschemat när du föreslår pass.
 - Formatregler för pass i förslag: uppvärmning/nedvarvning i minuter, huvuddelen som block med steg
   (distanspass = ett block med iterations=1 och ett work-steg; intervaller = iterations=N med ett
   work-steg och ett recovery-steg; styrka/HIIT/rörlighet = tidsbaserade steg med target_type "none").`;
@@ -210,13 +231,14 @@ async function createPendingReply(
 async function generateReply(supabase: SupabaseClient, replyId: string, checkinWorkoutId: string | null) {
   try {
     const today = dayKey(new Date());
-    const [data, plan, history] = await Promise.all([
+    const [data, plan, history, profile] = await Promise.all([
       loadAthleteData(supabase, HISTORY_DAYS),
       loadActivePlan(supabase, today),
       loadHistory(supabase, replyId),
+      loadProfile(supabase),
     ]);
 
-    const messages = buildMessages(data, plan, history, today, checkinWorkoutId);
+    const messages = buildMessages(data, plan, profile, history, today, checkinWorkoutId);
     const windowStart = today;
     const windowEnd = plan?.end_date ?? today;
 
@@ -224,16 +246,27 @@ async function generateReply(supabase: SupabaseClient, replyId: string, checkinW
       messages,
       effort: "low",
       maxTokens: MAX_TOKENS,
-      tools: plan?.plan
-        ? [{
-          name: "propose_plan_change",
-          description: `Föreslå ändrade pass i den aktiva planen för perioden ${windowStart} till ${windowEnd}. ` +
-            "Ange hela den nya listan av pass för perioden, även oförändrade pass. " +
-            "Personen måste godkänna förslaget i appen innan det gäller.",
-          parameters: PROPOSAL_JSON_SCHEMA,
-        }]
-        : undefined,
+      tools: [
+        {
+          name: "update_profile",
+          description: "Spara bestående information i personens profil (mål, veckoschema, skador, övrigt). " +
+            "Ange bara de fält som ändras.",
+          parameters: PROFILE_JSON_SCHEMA,
+        },
+        ...(plan?.plan
+          ? [{
+            name: "propose_plan_change",
+            description: `Föreslå ändrade pass i den aktiva planen för perioden ${windowStart} till ${windowEnd}. ` +
+              "Ange hela den nya listan av pass för perioden, även oförändrade pass. " +
+              "Personen måste godkänna förslaget i appen innan det gäller.",
+            parameters: PROPOSAL_JSON_SCHEMA,
+          }]
+          : []),
+      ],
     });
+
+    const profileCall = result.toolCalls.find((c) => c.function.name === "update_profile");
+    const profileUpdate = profileCall ? await applyProfileUpdate(supabase, profile, profileCall) : null;
 
     let proposal: Proposal | null = null;
     const call = result.toolCalls.find((c) => c.function.name === "propose_plan_change");
@@ -251,7 +284,7 @@ async function generateReply(supabase: SupabaseClient, replyId: string, checkinW
       }
     }
 
-    const content = result.content || proposal?.reason || "";
+    const content = result.content || proposal?.reason || profileUpdate?.summary || "";
     if (!content) throw new Error("AI-coachen svarade inte. Försök igen.");
 
     const { error } = await supabase
@@ -263,6 +296,7 @@ async function generateReply(supabase: SupabaseClient, replyId: string, checkinW
         proposal,
         proposal_status: proposal ? "pending" : null,
         plan_id: proposal ? plan!.id : null,
+        profile_update: profileUpdate,
         updated_at: new Date().toISOString(),
       })
       .eq("id", replyId);
@@ -279,7 +313,7 @@ async function generateReply(supabase: SupabaseClient, replyId: string, checkinW
 async function loadHistory(supabase: SupabaseClient, excludeId: string): Promise<MessageRow[]> {
   const { data, error } = await supabase
     .from("coach_messages")
-    .select("id, role, content, status, workout_id, proposal, proposal_status, plan_id, created_at")
+    .select("id, role, content, status, workout_id, proposal, proposal_status, plan_id, profile_update, created_at")
     .neq("id", excludeId)
     .eq("status", "done")
     .order("created_at", { ascending: false })
@@ -291,6 +325,7 @@ async function loadHistory(supabase: SupabaseClient, excludeId: string): Promise
 function buildMessages(
   data: AthleteData,
   plan: PlanRow | null,
+  profile: ProfileRow | null,
   history: MessageRow[],
   today: string,
   checkinWorkoutId: string | null,
@@ -303,9 +338,9 @@ function buildMessages(
     content: [
       {
         type: "text",
-        text: `${SYSTEM_PROMPT}\n\n# Data\n${buildSummary(data, today)}\n\n# Aktuell plan\n${
-          describePlan(plan, data.workouts, today)
-        }`,
+        text: `${SYSTEM_PROMPT}\n\n# Personens profil\n${describeProfile(profile)}\n\n# Data\n${
+          buildSummary(data, today)
+        }\n\n# Aktuell plan\n${describePlan(plan, data.workouts, today)}`,
         // Datan ändras sällan inom en chattsession – cachas hos Anthropic.
         cache_control: { type: "ephemeral" },
       },
@@ -325,6 +360,9 @@ function buildMessages(
       content += `\n[Föreslagen planändring (${status}): ${m.proposal.reason}. Pass: ${
         m.proposal.workouts.map((w) => `${w.date}: ${describePlannedWorkout(w)}`).join(" / ") || "inga"
       }]`;
+    }
+    if (m.profile_update) {
+      content += `\n[Profil uppdaterad: ${m.profile_update.summary}]`;
     }
     push(messages, m.role, content);
   }
@@ -349,6 +387,46 @@ function buildMessages(
     push(messages, "user", "[Fortsätt samtalet.]");
   }
   return messages;
+}
+
+/** Sparar coachens profiländring. Veckodagar slås ihop med befintligt schema; tom sträng tar bort dagen. */
+async function applyProfileUpdate(
+  supabase: SupabaseClient,
+  current: ProfileRow | null,
+  call: ToolCall,
+): Promise<{ summary: string; fields: string[] } | null> {
+  const parsed = ProfileUpdateSchema.safeParse(safeJson(call.function.arguments));
+  if (!parsed.success) {
+    console.error("invalid profile update", parsed.error.issues.slice(0, 5));
+    return null;
+  }
+  const update = parsed.data;
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const fields: string[] = [];
+  for (const key of ["goals", "limitations", "notes"] as const) {
+    if (update[key] !== undefined) {
+      patch[key] = update[key]?.trim() || null;
+      fields.push(key);
+    }
+  }
+  if (update.weekly_schedule) {
+    const merged: Record<string, string> = { ...(current?.weekly_schedule ?? {}) };
+    for (const [day, text] of Object.entries(update.weekly_schedule)) {
+      if (text === undefined) continue;
+      if (text.trim()) merged[day] = text.trim();
+      else delete merged[day];
+    }
+    patch.weekly_schedule = merged;
+    fields.push("weekly_schedule");
+  }
+  if (!fields.length) return null;
+
+  const { error } = await supabase.from("athlete_profiles").upsert(patch, { onConflict: "user_id" });
+  if (error) {
+    console.error("profile update failed", error);
+    return null;
+  }
+  return { summary: update.summary, fields };
 }
 
 function workoutNotice(workout: WorkoutRow | undefined): string {

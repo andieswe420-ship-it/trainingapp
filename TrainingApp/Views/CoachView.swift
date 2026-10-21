@@ -8,6 +8,7 @@ struct CoachView: View {
 
     @State private var draft = ""
     @State private var showAccount = false
+    @State private var showProfile = false
 
     private let suggestions = [
         "Hur går träningen?",
@@ -32,7 +33,18 @@ struct CoachView: View {
             }
             .navigationTitle("Coach")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if sync.isSignedIn {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showProfile = true } label: {
+                            Image(systemName: "person.text.rectangle")
+                        }
+                        .accessibilityLabel("Min profil")
+                    }
+                }
+            }
             .sheet(isPresented: $showAccount) { AccountView() }
+            .sheet(isPresented: $showProfile) { ProfileView() }
         }
         .task(id: sync.userEmail) { await store.refresh() }
         .onAppear { store.isVisible = true }
@@ -47,13 +59,18 @@ struct CoachView: View {
                         intro
                     }
                     ForEach(store.messages) { message in
-                        CoachMessageView(message: message, isDeciding: store.deciding.contains(message.id)) { accept in
-                            Task {
-                                if await store.decide(message, accept: accept) {
-                                    await planStore.loadLatest()
+                        CoachMessageView(
+                            message: message,
+                            isDeciding: store.deciding.contains(message.id),
+                            onDecide: { accept in
+                                Task {
+                                    if await store.decide(message, accept: accept) {
+                                        await planStore.loadLatest()
+                                    }
                                 }
-                            }
-                        }
+                            },
+                            onShowProfile: { showProfile = true }
+                        )
                         .id(message.id)
                     }
                     if let error = store.errorMessage {
@@ -123,6 +140,7 @@ private struct CoachMessageView: View {
     let message: CoachMessage
     let isDeciding: Bool
     let onDecide: (Bool) -> Void
+    let onShowProfile: () -> Void
 
     private var isUser: Bool { message.role == .user }
 
@@ -136,6 +154,16 @@ private struct CoachMessageView: View {
                     isDeciding: isDeciding,
                     onDecide: onDecide
                 )
+            }
+            if let update = message.profileUpdate {
+                Button(action: onShowProfile) {
+                    Label("Profilen uppdaterad: \(update.summary)", systemImage: "person.text.rectangle")
+                        .font(.caption)
+                        .multilineTextAlignment(.leading)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                .frame(maxWidth: 320, alignment: .leading)
             }
             Text(message.createdAt.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
                 .font(.caption2)

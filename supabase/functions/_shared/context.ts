@@ -49,6 +49,25 @@ export interface PlanRow {
   plan: Plan | null;
 }
 
+export const WEEKDAYS = [
+  ["monday", "måndag"],
+  ["tuesday", "tisdag"],
+  ["wednesday", "onsdag"],
+  ["thursday", "torsdag"],
+  ["friday", "fredag"],
+  ["saturday", "lördag"],
+  ["sunday", "söndag"],
+] as const;
+export type WeekdayKey = (typeof WEEKDAYS)[number][0];
+
+export interface ProfileRow {
+  goals: string | null;
+  weekly_schedule: Partial<Record<WeekdayKey, string>>;
+  limitations: string | null;
+  notes: string | null;
+  updated_at: string;
+}
+
 export interface AthleteData {
   workouts: WorkoutRow[];
   samples: SampleRow[];
@@ -111,6 +130,15 @@ export async function loadAthleteData(supabase: SupabaseClient, days: number): P
     fetchAll<DailyRow>(supabase, "daily_metrics", DAILY_COLUMNS, "date", since.slice(0, 10)),
   ]);
   return { workouts, samples, daily };
+}
+
+export async function loadProfile(supabase: SupabaseClient): Promise<ProfileRow | null> {
+  const { data, error } = await supabase
+    .from("athlete_profiles")
+    .select("goals, weekly_schedule, limitations, notes, updated_at")
+    .maybeSingle();
+  if (error) throw new Error(`Kunde inte läsa profilen: ${error.message}`);
+  return data as ProfileRow | null;
 }
 
 /** Senaste planen som fortfarande pågår (slutdatum idag eller senare), om någon. */
@@ -348,6 +376,21 @@ export function buildSummary(data: AthleteData, today: string): string {
     lines.push(describeWorkout(w, dayKey(w.started_at) >= addDays(today, -20)));
   }
 
+  return lines.join("\n");
+}
+
+// MARK: - Profil
+
+export function describeProfile(profile: ProfileRow | null): string {
+  if (!profile) return "Ingen profil ifylld ännu.";
+  const lines = [
+    `Mål: ${profile.goals?.trim() || "inte angivet"}`,
+    "Veckoschema (personens önskemål om vad varje veckodag ska innehålla):",
+    ...WEEKDAYS.map(([key, name]) => `  ${name}: ${profile.weekly_schedule?.[key]?.trim() || "flexibel"}`),
+    `Skador och begränsningar: ${profile.limitations?.trim() || "inga angivna"}`,
+    `Övrigt: ${profile.notes?.trim() || "–"}`,
+    `(Profilen uppdaterades senast ${dayKey(profile.updated_at)}.)`,
+  ];
   return lines.join("\n");
 }
 

@@ -8,12 +8,24 @@ struct PlanView: View {
 
     @AppStorage("planNotes") private var notes = ""
     @State private var showAccount = false
+    @State private var showProfile = false
 
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle("Veckoplan")
+                .toolbar {
+                    if sync.isSignedIn {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { showProfile = true } label: {
+                                Image(systemName: "person.text.rectangle")
+                            }
+                            .accessibilityLabel("Min profil")
+                        }
+                    }
+                }
                 .sheet(isPresented: $showAccount) { AccountView() }
+                .sheet(isPresented: $showProfile) { ProfileView() }
         }
         .task(id: sync.userEmail) {
             if sync.isSignedIn { await store.loadLatest() }
@@ -50,7 +62,7 @@ struct PlanView: View {
 
     private var requestSection: some View {
         Section {
-            TextField("Önskemål – t.ex. mål, vilka dagar du kan träna, skador", text: $notes, axis: .vertical)
+            TextField("Önskemål för just den här veckan", text: $notes, axis: .vertical)
                 .lineLimit(2...5)
             Button {
                 Task {
@@ -66,7 +78,7 @@ struct PlanView: View {
             }
             .disabled(store.isPlanning || health.state != .loaded)
         } footer: {
-            Text("Planen gäller sju dagar från idag. Dina senaste pass synkas först.")
+            Text("Planen gäller sju dagar från idag och följer veckoschemat i din profil. Dina senaste pass synkas först.")
         }
     }
 
