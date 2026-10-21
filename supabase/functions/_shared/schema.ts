@@ -48,3 +48,20 @@ export const PlanSchema = z.object({
 });
 
 export type Plan = z.infer<typeof PlanSchema>;
+export type Workout = z.infer<typeof WorkoutSchema>;
+
+/** Håller passen inom [start, end], sorterade, och med rimliga värden för WorkoutKit. */
+export function cleanWorkouts(workouts: Workout[], start: string, end: string): Workout[] {
+  return workouts
+    .filter((w) => w.date >= start && w.date <= end)
+    .map((w) => ({
+      ...w,
+      title: w.title.slice(0, 40),
+      warmup_minutes: Math.max(0, Math.round(w.warmup_minutes)),
+      cooldown_minutes: Math.max(0, Math.round(w.cooldown_minutes)),
+      blocks: w.blocks
+        .filter((b) => b.steps.length > 0)
+        .map((b) => ({ ...b, iterations: Math.max(1, Math.round(b.iterations)) })),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
