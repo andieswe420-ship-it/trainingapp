@@ -25,7 +25,7 @@ final class HealthKitManager {
     private let store = HKHealthStore()
 
     private var readTypes: Set<HKObjectType> {
-        [
+        var types: Set<HKObjectType> = [
             HKObjectType.workoutType(),
             HKQuantityType(.heartRate),
             HKQuantityType(.restingHeartRate),
@@ -35,9 +35,12 @@ final class HealthKitManager {
             HKQuantityType(.distanceWalkingRunning),
             HKQuantityType(.distanceCycling),
             HKQuantityType(.distanceSwimming),
-            HKQuantityType(.distanceCrossCountrySkiing),
-            HKQuantityType(.distanceRowing),
         ]
+        if #available(iOS 18.0, *) {
+            types.insert(HKQuantityType(.distanceCrossCountrySkiing))
+            types.insert(HKQuantityType(.distanceRowing))
+        }
+        return types
     }
 
     /// Visar HealthKits behörighetsdialog (bara första gången) och laddar sedan all data.

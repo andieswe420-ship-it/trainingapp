@@ -27,15 +27,7 @@ extension WorkoutSummary {
             .averageQuantity()?
             .doubleValue(for: bpm)
 
-        let distanceType: HKQuantityType? = switch workout.workoutActivityType {
-        case .running, .walking, .hiking: HKQuantityType(.distanceWalkingRunning)
-        case .cycling: HKQuantityType(.distanceCycling)
-        case .swimming: HKQuantityType(.distanceSwimming)
-        case .crossCountrySkiing: HKQuantityType(.distanceCrossCountrySkiing)
-        case .rowing: HKQuantityType(.distanceRowing)
-        default: nil
-        }
-        let distance = distanceType.flatMap { workout.statistics(for: $0)?.sumQuantity() }?
+        let distance = Self.distanceType(for: workout.workoutActivityType).flatMap { workout.statistics(for: $0)?.sumQuantity() }?
             .doubleValue(for: .meter())
 
         let energy = workout.statistics(for: HKQuantityType(.activeEnergyBurned))?
@@ -52,5 +44,25 @@ extension WorkoutSummary {
             distanceMeters: distance,
             activeEnergyKcal: energy
         )
+    }
+
+    /// Distanstypen som hör till en aktivitet. Längdskidor och rodd har egna typer först i iOS 18.
+    private static func distanceType(for activity: HKWorkoutActivityType) -> HKQuantityType? {
+        switch activity {
+        case .running, .walking, .hiking:
+            return HKQuantityType(.distanceWalkingRunning)
+        case .cycling:
+            return HKQuantityType(.distanceCycling)
+        case .swimming:
+            return HKQuantityType(.distanceSwimming)
+        case .crossCountrySkiing:
+            if #available(iOS 18.0, *) { return HKQuantityType(.distanceCrossCountrySkiing) }
+            return nil
+        case .rowing:
+            if #available(iOS 18.0, *) { return HKQuantityType(.distanceRowing) }
+            return nil
+        default:
+            return nil
+        }
     }
 }
