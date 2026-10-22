@@ -25,7 +25,13 @@ final class SyncService {
 
     init() {
         client = SupabaseConfig.load().map {
-            SupabaseClient(supabaseURL: $0.url, supabaseKey: $0.publishableKey)
+            SupabaseClient(
+                supabaseURL: $0.url,
+                supabaseKey: $0.publishableKey,
+                // Nya beteendet: den lokalt sparade sessionen skickas direkt vid start, även om den
+                // hunnit gå ut. Klienten förnyar den själv; misslyckas det kommer en utloggning.
+                options: SupabaseClientOptions(auth: .init(emitLocalSessionAsInitialSession: true))
+            )
         }
         userEmail = client?.auth.currentUser?.email
         lastSyncedAt = UserDefaults.standard.object(forKey: Self.lastSyncKey) as? Date
