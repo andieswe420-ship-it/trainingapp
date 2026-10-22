@@ -7,7 +7,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { userClient } from "../_shared/auth.ts";
 import { addDays, dayKey } from "../_shared/context.ts";
-import { errorMessage, json } from "../_shared/openrouter.ts";
+import { errorMessage, json } from "../_shared/ai.ts";
 import { createPendingPlan, generatePlan } from "../_shared/planner.ts";
 
 const PLAN_DAYS = 7;

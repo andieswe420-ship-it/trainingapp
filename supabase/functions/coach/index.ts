@@ -32,7 +32,7 @@ import {
   WEEKDAYS,
   type WorkoutRow,
 } from "../_shared/context.ts";
-import { chat, type ChatMessage, errorMessage, json, MODELS, type ToolCall } from "../_shared/openrouter.ts";
+import { chat, type ChatMessage, defaultModel, errorMessage, json, type ToolCall } from "../_shared/ai.ts";
 import { cleanWorkouts, WorkoutSchema } from "../_shared/schema.ts";
 
 const HISTORY_DAYS = 90;
@@ -221,7 +221,7 @@ async function createPendingReply(
 ): Promise<{ id: string }> {
   const { data, error } = await supabase
     .from("coach_messages")
-    .insert({ role: "assistant", status: "pending", model: MODELS[0], ...extra })
+    .insert({ role: "assistant", status: "pending", model: defaultModel(), ...extra })
     .select("id")
     .single();
   if (error || !data) throw new Error(`Kunde inte skapa svar: ${error?.message}`);

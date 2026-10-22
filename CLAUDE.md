@@ -53,8 +53,12 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    `update_profile` (utan godkännande, veckodagar slås ihop) och det visas i chatten
    (`coach_messages.profile_update`). Användaren kan redigera profilen i `ProfileView`
    (knapp i Plan- och Coach-fliken).
-   Delad serverkod ligger i `supabase/functions/_shared/` (kontext, schema, OpenRouter, auth).
-   `OPENROUTER_API_KEY` är en Edge Function-secret i Supabase – aldrig i appen eller repot.
+   Delad serverkod ligger i `supabase/functions/_shared/` (kontext, schema, AI-anrop, auth).
+   **AI-leverantör** (`_shared/ai.ts`, OpenAI-kompatibla chat completions) väljs med Edge Function-
+   secrets: `AI_PROVIDER` = `openrouter` (standard) eller `berget` (Berget AI, Stockholm, med
+   `BERGET_API_KEY` och valfri `BERGET_MODEL`, standard `moonshotai/Kimi-K3`). Med Berget används
+   OpenRouter som reserv vid fel. Kolumnen `model` visar vilken modell som svarade (`berget/...`).
+   Nycklarna (`OPENROUTER_API_KEY`, `BERGET_API_KEY`) är secrets i Supabase – aldrig i appen eller repot.
    **Automatisk veckoplan** – Edge Function `weekly-plans` anropas av pg_cron söndagar 17:00 UTC
    och skapar måndag–söndag-planer för profiler med `auto_weekly_plan`. Den kör med service role
    och skyddas av headern `x-cron-secret` som jämförs mot Vault (`verify_cron_secret`). Därför

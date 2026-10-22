@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { userClient } from "../_shared/auth.ts";
 import { buildSummary, dayKey, describeProfile, loadAthleteData, loadProfile } from "../_shared/context.ts";
-import { AIError, chat, errorMessage, json, MODELS } from "../_shared/openrouter.ts";
+import { AIError, chat, defaultModel, errorMessage, json } from "../_shared/ai.ts";
 
 const HISTORY_DAYS = 90;
 const MAX_TOKENS = 32000;
@@ -86,7 +86,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: row, error } = await supabase
       .from("trend_insights")
-      .insert({ user_id: userId, date: today, period, input: body.metrics ?? {}, model: MODELS[0] })
+      .insert({ user_id: userId, date: today, period, input: body.metrics ?? {}, model: defaultModel() })
       .select("id")
       .single();
     if (error || !row) {

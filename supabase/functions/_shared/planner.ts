@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { buildSummary, dayKey, describeProfile, loadAthleteData, loadProfile } from "./context.ts";
-import { AIError, chat, errorMessage, MODELS } from "./openrouter.ts";
+import { AIError, chat, defaultModel, errorMessage } from "./ai.ts";
 import { cleanWorkouts, type Plan, PlanSchema } from "./schema.ts";
 
 const HISTORY_DAYS = 90;
@@ -51,7 +51,7 @@ export async function createPendingPlan(
 ): Promise<string> {
   const { data, error } = await supabase
     .from("training_plans")
-    .insert({ user_id: userId, start_date: startDate, end_date: endDate, notes: notes || null, model: MODELS[0] })
+    .insert({ user_id: userId, start_date: startDate, end_date: endDate, notes: notes || null, model: defaultModel() })
     .select("id")
     .single();
   if (error || !data) throw new Error(`Kunde inte skapa plan: ${error?.message}`);
