@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#062A20"/>
+      <stop offset="0.6" stop-color="#0F6B43"/>
+      <stop offset="1" stop-color="#1FA463"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.55">
+      <stop offset="0" stop-color="#5BF59A" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#5BF59A" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#B8FF5C"/>
+      <stop offset="1" stop-color="#3BF0A0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#021A12" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+  <!-- ring: spår + 80 % fylld båge -->
+  <circle cx="512" cy="512" r="330" fill="none" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="54"/>
+  <circle cx="512" cy="512" r="330" fill="none" stroke="url(#ring)" stroke-width="54" stroke-linecap="round"
+          stroke-dasharray="1659 2074" transform="rotate(-90 512 512)" filter="url(#shadow)"/>
+  <!-- puls som övergår i en stigande formkurva -->
+  <g filter="url(#shadow)" transform="translate(500 528) scale(1.12) translate(-508 -522)" fill="none" stroke="#FFFFFF" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M300 560 H405 L450 470 L510 650 L566 430 L606 505 L716 395"/>
+    <path d="M640 402 L716 395 L709 471"/>
+  </g>
+</svg>
