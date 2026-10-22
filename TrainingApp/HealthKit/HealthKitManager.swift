@@ -27,6 +27,7 @@ final class HealthKitManager {
     var isHealthDataAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
 
     private let store = HKHealthStore()
+    @ObservationIgnored private var workoutObserver: HKObserverQuery?
     private static let bpm = HKUnit.count().unitDivided(by: .minute())
 
     private var readTypes: Set<HKObjectType> {
@@ -73,6 +74,25 @@ final class HealthKitManager {
         } catch {
             state = .failed(error.localizedDescription)
         }
+    }
+
+    /// Väcker appen – även i bakgrunden – när ett nytt pass sparas i Hälsa. Anropas vid start
+    /// så att frågan finns registrerad när iOS startar appen för att leverera nya data.
+    func observeNewWorkouts(_ onUpdate: @escaping @MainActor () async -> Void) {
+        guard isHealthDataAvailable, workoutObserver == nil else { return }
+        let query = HKObserverQuery(sampleType: HKObjectType.workoutType(), predicate: nil) { _, completionHandler, error in
+            guard error == nil else {
+                completionHandler()
+                return
+            }
+            Task { @MainActor in
+                await onUpdate()
+                completionHandler()
+            }
+        }
+        store.execute(query)
+        workoutObserver = query
+        store.enableBackgroundDelivery(for: HKObjectType.workoutType(), frequency: .immediate) { _, _ in }
     }
 
     func refresh() async {

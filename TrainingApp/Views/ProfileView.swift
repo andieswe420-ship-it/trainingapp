@@ -47,6 +47,12 @@ struct ProfileView: View {
                     Text("Coachen uppdaterar profilen när du berättar något bestående i chatten. Profilen används också när nya veckoplaner skapas.")
                 }
 
+                Section {
+                    Toggle("Automatisk veckoplan", isOn: $profile.autoWeeklyPlan)
+                } footer: {
+                    Text("Varje söndagskväll skapas nästa veckas plan (måndag–söndag) automatiskt, och du får en notis när den är klar.")
+                }
+
                 if let errorMessage {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -99,6 +105,7 @@ struct ProfileView: View {
         defer { isSaving = false }
         do {
             try await sync.saveProfile(profile)
+            await Notifications.updateWeeklyPlanReminder(enabled: profile.autoWeeklyPlan)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

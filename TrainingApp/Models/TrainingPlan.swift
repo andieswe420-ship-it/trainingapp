@@ -75,7 +75,7 @@ struct PlanContent: Decodable, Hashable, Sendable {
 
 struct PlannedWorkout: Decodable, Hashable, Identifiable, Sendable {
     enum Activity: String, Decodable, Sendable {
-        case running, walking, cycling, hiit, strength, mobility
+        case running, walking, cycling, hiit, strength, mobility, pilates, yoga
 
         var swedishName: String {
             switch self {
@@ -85,6 +85,8 @@ struct PlannedWorkout: Decodable, Hashable, Identifiable, Sendable {
             case .hiit: "HIIT"
             case .strength: "Styrka"
             case .mobility: "Rörlighet"
+            case .pilates: "Pilates"
+            case .yoga: "Yoga"
             }
         }
 
@@ -96,6 +98,8 @@ struct PlannedWorkout: Decodable, Hashable, Identifiable, Sendable {
             case .hiit: "figure.highintensity.intervaltraining"
             case .strength: "figure.strengthtraining.traditional"
             case .mobility: "figure.flexibility"
+            case .pilates: "figure.pilates"
+            case .yoga: "figure.yoga"
             }
         }
     }

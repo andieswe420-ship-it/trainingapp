@@ -16,6 +16,10 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    i 10-bpm-intervall, pulsåterhämtning och löpdynamik. Per dag: sömn (faser, räknas till
    dagen man vaknar, en källa per natt), steg, aktiv energi, träningsminuter, ståtimmar,
    andningsfrekvens och handledstemperatur. Saknad behörighet för en typ ger bara tom data.
+   **Bakgrund:** `observeNewWorkouts` (HKObserverQuery + background delivery, entitlement i
+   `project.yml`) registreras i `TrainingApp.init` och väcker appen när ett pass sparas →
+   synk → coachens check-in → lokal notis om appen inte är öppen. När appen blir aktiv
+   (scenePhase) synkas och uppdateras plan och chatt.
 2. **Supabase** – projekt `trainingapp` (ref `whuleymkapsysrjxyfyx`, eu-north-1).
    `SyncService` är det enda stället som pratar med `SupabaseClient`. Synkar
    `WorkoutSummary` → `workouts`, `HealthSample` → `health_samples` (upsert på HealthKits UUID)
@@ -51,7 +55,13 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    (knapp i Plan- och Coach-fliken).
    Delad serverkod ligger i `supabase/functions/_shared/` (kontext, schema, OpenRouter, auth).
    `OPENROUTER_API_KEY` är en Edge Function-secret i Supabase – aldrig i appen eller repot.
-   Deploy: `supabase functions deploy plan-week coach` (eller Supabase MCP – ange då
+   **Automatisk veckoplan** – Edge Function `weekly-plans` anropas av pg_cron söndagar 17:00 UTC
+   och skapar måndag–söndag-planer för profiler med `auto_weekly_plan`. Den kör med service role
+   och skyddas av headern `x-cron-secret` som jämförs mot Vault (`verify_cron_secret`). Därför
+   filtrerar alla läsningar i `_shared/context.ts` och `_shared/planner.ts` på `user_id`.
+   Appen schemalägger en lokal påminnelse söndagar 19:30 (`Notifications`).
+   Deploy: `supabase functions deploy plan-week coach` och
+   `supabase functions deploy weekly-plans --no-verify-jwt` (eller Supabase MCP – ange då
    `import_map_path: deno.json` och skicka med `_shared`-filerna som `../_shared/<fil>`).
 4. **WorkoutKit** – (fas 4) appen hämtar planen och översätter den till
    `CustomWorkout`/`WorkoutPlan` och schemalägger med `WorkoutScheduler`.
@@ -69,6 +79,8 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 - [x] **Fas 3b** – Löpande coach (chatt, frågor efter pass, förslag på planändringar) och
       utökad hälsodata (sömn, aktivitet, andning, temperatur, löpdynamik, pulsfördelning).
 - [x] **Fas 3c** – Träningsprofil (mål, veckoschema, skador) som coach och planerare följer.
+- [x] **Fas 3d** – Bakgrundssynk med notis efter pass, automatisk veckoplan på söndagar,
+      pilates/yoga som passtyper och flik "Trender" (Swift Charts).
 - [ ] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
 
 ## Projektstruktur
@@ -77,9 +89,9 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 project.yml                 XcodeGen-spec – ENDA källan för projektinställningar
 Config/                     App.xcconfig (incheckad) + Secrets.xcconfig (gitignorerad)
 supabase/migrations/        Databasschema (SQL)
-supabase/functions/         Edge Functions (plan-week, coach, _shared)
+supabase/functions/         Edge Functions (plan-week, coach, weekly-plans, _shared)
 TrainingApp/
-  App/                      @main-app
+  App/                      @main-app, AppDelegate (notiser), AppRouter (flikar), Notifications
   HealthKit/                HealthKitManager (läsning, behörighet)
   Models/                   WorkoutSummary, HealthSample, DailyMetrics, HealthMetrics, TrainingPlan,
                             CoachMessage, AthleteProfile, svenska namn
