@@ -10,6 +10,7 @@ struct TrainingApp: App {
     @State private var sync: SyncService
     @State private var planStore: PlanStore
     @State private var coachStore: CoachStore
+    @State private var insightStore: InsightStore
     @State private var router = AppRouter.shared
 
     init() {
@@ -20,6 +21,7 @@ struct TrainingApp: App {
         _sync = State(initialValue: sync)
         _planStore = State(initialValue: PlanStore(sync: sync))
         _coachStore = State(initialValue: coach)
+        _insightStore = State(initialValue: InsightStore(sync: sync))
 
         // Nytt pass i Hälsa (även när appen ligger i bakgrunden): synka och låt coachen fråga.
         health.observeNewWorkouts {
@@ -58,6 +60,7 @@ struct TrainingApp: App {
             .environment(sync)
             .environment(planStore)
             .environment(coachStore)
+            .environment(insightStore)
             .task { await sync.observeAuthChanges() }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }

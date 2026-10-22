@@ -60,6 +60,10 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    och skyddas av headern `x-cron-secret` som jämförs mot Vault (`verify_cron_secret`). Därför
    filtrerar alla läsningar i `_shared/context.ts` och `_shared/planner.ts` på `user_id`.
    Appen schemalägger en lokal påminnelse söndagar 19:30 (`Notifications`).
+   **Trendanalys** – Edge Function `insights`: appen räknar fram nyckeltal (`TrendSnapshot` i
+   `TrainingApp/Analysis/`) och skickar dem; AI:n skriver en övergripande analys, en kommentar
+   per diagram (status positive/neutral/attention) och mönster. Sparas i `trend_insights` en gång
+   per dag och period (`4w`/`3m`/`6m`); `force` skapar en ny. `InsightStore` pollar.
    Deploy: `supabase functions deploy plan-week coach` och
    `supabase functions deploy weekly-plans --no-verify-jwt` (eller Supabase MCP – ange då
    `import_map_path: deno.json` och skicka med `_shared`-filerna som `../_shared/<fil>`).
@@ -81,6 +85,9 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 - [x] **Fas 3c** – Träningsprofil (mål, veckoschema, skador) som coach och planerare följer.
 - [x] **Fas 3d** – Bakgrundssynk med notis efter pass, automatisk veckoplan på söndagar,
       pilates/yoga som passtyper och flik "Trender" (Swift Charts).
+- [x] **Fas 3e** – Utökade trender: periodval och jämförelse, normalintervall (band),
+      form/belastning (TRIMP, kondition/trötthet/form, belastningskvot), aerob effektivitet
+      (meter per hjärtslag), AI-analys och "Fråga coachen". 180 dagars historik från HealthKit.
 - [ ] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
 
 ## Projektstruktur
@@ -89,13 +96,14 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 project.yml                 XcodeGen-spec – ENDA källan för projektinställningar
 Config/                     App.xcconfig (incheckad) + Secrets.xcconfig (gitignorerad)
 supabase/migrations/        Databasschema (SQL)
-supabase/functions/         Edge Functions (plan-week, coach, weekly-plans, _shared)
+supabase/functions/         Edge Functions (plan-week, coach, weekly-plans, insights, _shared)
 TrainingApp/
   App/                      @main-app, AppDelegate (notiser), AppRouter (flikar), Notifications
+  Analysis/                 TrendAnalysis (beräkningar), TrendSnapshot (nyckeltal till AI-analysen)
   HealthKit/                HealthKitManager (läsning, behörighet)
   Models/                   WorkoutSummary, HealthSample, DailyMetrics, HealthMetrics, TrainingPlan,
                             CoachMessage, AthleteProfile, svenska namn
-  Planning/                 PlanStore, CoachStore (beställ/skicka, polla tills klart)
+  Planning/                 PlanStore, CoachStore, InsightStore (beställ/skicka, polla tills klart)
   Sync/                     SyncService (Supabase-auth + upsert), DTO:er, konfiguration
   Views/                    SwiftUI-vyer
   Scheduling/               WorkoutKit (behörighet nu, schemaläggning i fas 4)

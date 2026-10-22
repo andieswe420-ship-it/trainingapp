@@ -47,7 +47,11 @@ struct CoachView: View {
             .sheet(isPresented: $showProfile) { ProfileView() }
         }
         .task(id: sync.userEmail) { await store.refresh() }
-        .onAppear { store.isVisible = true }
+        .onAppear {
+            store.isVisible = true
+            takePrefill()
+        }
+        .onChange(of: store.prefill) { _, _ in takePrefill() }
         .onDisappear { store.isVisible = false }
     }
 
@@ -105,6 +109,12 @@ struct CoachView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func takePrefill() {
+        guard let prefill = store.prefill else { return }
+        draft = prefill
+        store.prefill = nil
     }
 
     private var canSend: Bool {

@@ -193,6 +193,38 @@ extension SyncService {
     }
 }
 
+// MARK: - Trendanalys
+
+extension SyncService {
+    /// Beställer (eller hämtar dagens) AI-analys för en period. Hämta resultatet med `fetchInsight(id:)`.
+    func requestInsight(period: String, snapshot: TrendSnapshot, force: Bool) async throws -> UUID {
+        guard let client else { throw SyncError.notConfigured }
+        guard isSignedIn else { throw SyncError.notSignedIn }
+        struct Body: Encodable {
+            let period: String
+            let metrics: TrendSnapshot
+            let force: Bool
+        }
+        struct Response: Decodable { let id: UUID }
+        let response: Response = try await client.functions.invoke(
+            "insights",
+            options: FunctionInvokeOptions(body: Body(period: period, metrics: snapshot, force: force))
+        )
+        return response.id
+    }
+
+    func fetchInsight(id: UUID) async throws -> TrendInsight? {
+        guard let client else { throw SyncError.notConfigured }
+        let rows: [TrendInsight] = try await client.from("trend_insights")
+            .select("id, status, content, error, updated_at")
+            .eq("id", value: id.uuidString)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first
+    }
+}
+
 // MARK: - Profil
 
 extension SyncService {

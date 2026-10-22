@@ -13,8 +13,8 @@ final class HealthKitManager {
         case failed(String)
     }
 
-    /// Hur långt bak vi hämtar data.
-    static let historyDays = 90
+    /// Hur långt bak vi hämtar data (6 månader för trenderna).
+    static let historyDays = 180
 
     private(set) var workouts: [WorkoutSummary] = []
     private(set) var metrics: HealthMetrics = .empty
