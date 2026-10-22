@@ -20,7 +20,11 @@ struct WorkoutListView: View {
         .task {
             await health.requestAuthorizationAndLoad()
             _ = await WorkoutKitAuthorization.requestIfNeeded()
+            await Notifications.requestAuthorization()
             await syncNow()
+            if sync.isSignedIn, let profile = try? await sync.fetchProfile() {
+                await Notifications.updateWeeklyPlanReminder(enabled: profile.autoWeeklyPlan)
+            }
         }
         .onChange(of: sync.userEmail) { _, email in
             guard email != nil else { return }

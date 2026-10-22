@@ -71,9 +71,11 @@ final class SyncService {
 
     /// Laddar upp pass, mätningar och dagsvärden. Idempotent: upsert på HealthKit-UUID respektive datum.
     /// Efter en lyckad synk får coachen chansen att fråga om ett nytt pass.
-    func sync(workouts: [WorkoutSummary], samples: [HealthSample], daily: [DailyMetrics]) async {
-        guard let client, isSignedIn else { return }
-        guard syncState != .syncing else { return }
+    /// Returnerar `true` om coachen började formulera en fråga om ett nytt pass.
+    @discardableResult
+    func sync(workouts: [WorkoutSummary], samples: [HealthSample], daily: [DailyMetrics]) async -> Bool {
+        guard let client, isSignedIn else { return false }
+        guard syncState != .syncing else { return false }
         syncState = .syncing
         do {
             for batch in workouts.map(WorkoutRecord.init).chunked(into: Self.batchSize) {
@@ -91,9 +93,9 @@ final class SyncService {
             syncState = .idle
         } catch {
             syncState = .failed(error.localizedDescription)
-            return
+            return false
         }
-        try? await requestCheckin()
+        return (try? await requestCheckin()) ?? false
     }
 }
 
@@ -151,19 +153,23 @@ extension SyncService {
         }
     }
 
-    private struct CoachResponse: Decodable {}
+    private struct CoachResponse: Decodable {
+        var created: Bool?
+    }
 
     func sendCoachMessage(_ text: String) async throws {
-        try await invokeCoach(CoachRequest(action: "send", text: text))
+        _ = try await invokeCoach(CoachRequest(action: "send", text: text))
     }
 
     /// Ber coachen fråga om det senaste passet, om den inte redan gjort det.
-    func requestCheckin() async throws {
-        try await invokeCoach(CoachRequest(action: "checkin"))
+    /// Returnerar `true` om en ny fråga skapades.
+    @discardableResult
+    func requestCheckin() async throws -> Bool {
+        try await invokeCoach(CoachRequest(action: "checkin")).created ?? false
     }
 
     func decideProposal(messageId: UUID, accept: Bool) async throws {
-        try await invokeCoach(CoachRequest(action: "decide", messageId: messageId, accept: accept))
+        _ = try await invokeCoach(CoachRequest(action: "decide", messageId: messageId, accept: accept))
     }
 
     func fetchCoachMessages(limit: Int = 100) async throws -> [CoachMessage] {
@@ -177,13 +183,45 @@ extension SyncService {
         return messages.reversed()
     }
 
-    private func invokeCoach(_ request: CoachRequest) async throws {
+    private func invokeCoach(_ request: CoachRequest) async throws -> CoachResponse {
         guard let client else { throw SyncError.notConfigured }
         guard isSignedIn else { throw SyncError.notSignedIn }
-        let _: CoachResponse = try await client.functions.invoke(
+        return try await client.functions.invoke(
             "coach",
             options: FunctionInvokeOptions(body: request)
         )
+    }
+}
+
+// MARK: - Trendanalys
+
+extension SyncService {
+    /// Beställer (eller hämtar dagens) AI-analys för en period. Hämta resultatet med `fetchInsight(id:)`.
+    func requestInsight(period: String, snapshot: TrendSnapshot, force: Bool) async throws -> UUID {
+        guard let client else { throw SyncError.notConfigured }
+        guard isSignedIn else { throw SyncError.notSignedIn }
+        struct Body: Encodable {
+            let period: String
+            let metrics: TrendSnapshot
+            let force: Bool
+        }
+        struct Response: Decodable { let id: UUID }
+        let response: Response = try await client.functions.invoke(
+            "insights",
+            options: FunctionInvokeOptions(body: Body(period: period, metrics: snapshot, force: force))
+        )
+        return response.id
+    }
+
+    func fetchInsight(id: UUID) async throws -> TrendInsight? {
+        guard let client else { throw SyncError.notConfigured }
+        let rows: [TrendInsight] = try await client.from("trend_insights")
+            .select("id, status, content, error, updated_at")
+            .eq("id", value: id.uuidString)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first
     }
 }
 

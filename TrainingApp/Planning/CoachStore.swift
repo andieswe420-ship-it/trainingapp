@@ -9,6 +9,8 @@ final class CoachStore {
     private(set) var isSending = false
     private(set) var deciding: Set<UUID> = []
     private(set) var errorMessage: String?
+    /// Fråga som ska fyllas i chattens textfält, t.ex. från "Fråga coachen" i Trender.
+    var prefill: String?
     /// Sätts av chattvyn så att nya svar räknas som lästa medan den visas.
     var isVisible = false {
         didSet { if isVisible { markSeen() } }

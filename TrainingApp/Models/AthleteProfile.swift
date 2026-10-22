@@ -25,6 +25,8 @@ struct AthleteProfile: Codable, Equatable, Sendable {
     var weeklySchedule: [String: String] = [:]
     var limitations = ""
     var notes = ""
+    /// Skapa nästa veckas plan automatiskt på söndagskvällen.
+    var autoWeeklyPlan = true
     var updatedAt: Date?
 
     static let empty = AthleteProfile()
@@ -32,6 +34,7 @@ struct AthleteProfile: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case goals, limitations, notes
         case weeklySchedule = "weekly_schedule"
+        case autoWeeklyPlan = "auto_weekly_plan"
         case updatedAt = "updated_at"
     }
 
@@ -43,6 +46,7 @@ struct AthleteProfile: Codable, Equatable, Sendable {
         weeklySchedule = try container.decodeIfPresent([String: String].self, forKey: .weeklySchedule) ?? [:]
         limitations = try container.decodeIfPresent(String.self, forKey: .limitations) ?? ""
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        autoWeeklyPlan = try container.decodeIfPresent(Bool.self, forKey: .autoWeeklyPlan) ?? true
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
     }
 
@@ -52,6 +56,7 @@ struct AthleteProfile: Codable, Equatable, Sendable {
         try container.encode(Self.nonEmpty(goals), forKey: .goals)
         try container.encode(Self.nonEmpty(limitations), forKey: .limitations)
         try container.encode(Self.nonEmpty(notes), forKey: .notes)
+        try container.encode(autoWeeklyPlan, forKey: .autoWeeklyPlan)
         try container.encode(
             weeklySchedule.compactMapValues { Self.nonEmpty($0) },
             forKey: .weeklySchedule
