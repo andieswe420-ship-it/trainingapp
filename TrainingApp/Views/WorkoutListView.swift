@@ -2,16 +2,79 @@ import SwiftUI
 
 struct WorkoutListView: View {
     @Environment(HealthKitManager.self) private var health
+    @Environment(SyncService.self) private var sync
+    @Environment(CoachStore.self) private var coach
+    @State private var showAccount = false
 
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle("Träning")
-                .refreshable { await health.refresh() }
+                .refreshable {
+                    await health.refresh()
+                    await syncNow()
+                }
+                .toolbar { toolbar }
+                .sheet(isPresented: $showAccount) { AccountView() }
         }
         .task {
             await health.requestAuthorizationAndLoad()
             _ = await WorkoutKitAuthorization.requestIfNeeded()
+            await syncNow()
+        }
+        .onChange(of: sync.userEmail) { _, email in
+            guard email != nil else { return }
+            Task { await syncNow() }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                showAccount = true
+            } label: {
+                Image(systemName: sync.isSignedIn ? "person.crop.circle.fill" : "person.crop.circle")
+            }
+            .accessibilityLabel("Konto")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            if sync.syncState == .syncing {
+                ProgressView()
+            } else {
+                Button {
+                    if sync.isSignedIn {
+                        Task { await syncNow() }
+                    } else {
+                        showAccount = true
+                    }
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath.icloud")
+                }
+                .accessibilityLabel("Synka till molnet")
+            }
+        }
+    }
+
+    private func syncNow() async {
+        guard health.state == .loaded else { return }
+        await sync.sync(workouts: health.workouts, samples: health.samples, daily: health.dailyMetrics)
+        // Synken kan ha fått coachen att fråga om ett nytt pass.
+        await coach.refresh()
+    }
+
+    private var syncStatusText: String {
+        if !sync.isSignedIn {
+            return "Inte inloggad – tryck på molnet för att synka."
+        }
+        switch sync.syncState {
+        case .syncing:
+            return "Synkar…"
+        case .failed(let message):
+            return "Synk misslyckades: \(message)"
+        case .idle:
+            guard let date = sync.lastSyncedAt else { return "Inte synkad än." }
+            return "Senast synkad \(date.formatted(.relative(presentation: .named)))."
         }
     }
 
@@ -43,7 +106,7 @@ struct WorkoutListView: View {
                 MetricsRow(metrics: health.metrics)
             }
 
-            Section("Senaste \(HealthKitManager.historyDays) dagarna (\(health.workouts.count) pass)") {
+            Section {
                 if health.workouts.isEmpty {
                     Text("Inga träningspass hittades. Kontrollera att appen har läsbehörighet i Hälsa → Delning → Appar.")
                         .font(.callout)
@@ -53,6 +116,10 @@ struct WorkoutListView: View {
                         WorkoutRow(workout: workout)
                     }
                 }
+            } header: {
+                Text("Senaste \(HealthKitManager.historyDays) dagarna (\(health.workouts.count) pass)")
+            } footer: {
+                Text(syncStatusText)
             }
         }
     }
@@ -61,4 +128,6 @@ struct WorkoutListView: View {
 #Preview {
     WorkoutListView()
         .environment(HealthKitManager())
+        .environment(SyncService())
+        .environment(CoachStore(sync: SyncService()))
 }
