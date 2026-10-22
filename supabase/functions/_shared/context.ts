@@ -122,30 +122,35 @@ function weekStart(day: string): string {
 
 // MARK: - Hämtning
 
-export async function loadAthleteData(supabase: SupabaseClient, days: number): Promise<AthleteData> {
+// Alla frågor filtrerar på user_id: med användarens klient är det dubbelt upp mot RLS, med
+// service role-klienten (schemalagda jobb) är det det enda som skiljer användarna åt.
+
+export async function loadAthleteData(supabase: SupabaseClient, userId: string, days: number): Promise<AthleteData> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
   const [workouts, samples, daily] = await Promise.all([
-    fetchAll<WorkoutRow>(supabase, "workouts", WORKOUT_COLUMNS, "started_at", since),
-    fetchAll<SampleRow>(supabase, "health_samples", "kind, value, measured_at", "measured_at", since),
-    fetchAll<DailyRow>(supabase, "daily_metrics", DAILY_COLUMNS, "date", since.slice(0, 10)),
+    fetchAll<WorkoutRow>(supabase, userId, "workouts", WORKOUT_COLUMNS, "started_at", since),
+    fetchAll<SampleRow>(supabase, userId, "health_samples", "kind, value, measured_at", "measured_at", since),
+    fetchAll<DailyRow>(supabase, userId, "daily_metrics", DAILY_COLUMNS, "date", since.slice(0, 10)),
   ]);
   return { workouts, samples, daily };
 }
 
-export async function loadProfile(supabase: SupabaseClient): Promise<ProfileRow | null> {
+export async function loadProfile(supabase: SupabaseClient, userId: string): Promise<ProfileRow | null> {
   const { data, error } = await supabase
     .from("athlete_profiles")
     .select("goals, weekly_schedule, limitations, notes, updated_at")
+    .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(`Kunde inte läsa profilen: ${error.message}`);
   return data as ProfileRow | null;
 }
 
 /** Senaste planen som fortfarande pågår (slutdatum idag eller senare), om någon. */
-export async function loadActivePlan(supabase: SupabaseClient, today: string): Promise<PlanRow | null> {
+export async function loadActivePlan(supabase: SupabaseClient, userId: string, today: string): Promise<PlanRow | null> {
   const { data, error } = await supabase
     .from("training_plans")
     .select("id, start_date, end_date, plan")
+    .eq("user_id", userId)
     .eq("status", "ready")
     .gte("end_date", today)
     .order("created_at", { ascending: false })
@@ -156,6 +161,7 @@ export async function loadActivePlan(supabase: SupabaseClient, today: string): P
 
 async function fetchAll<T>(
   supabase: SupabaseClient,
+  userId: string,
   table: string,
   columns: string,
   orderColumn: string,
@@ -166,6 +172,7 @@ async function fetchAll<T>(
     const { data, error } = await supabase
       .from(table)
       .select(columns)
+      .eq("user_id", userId)
       .gte(orderColumn, since)
       .order(orderColumn, { ascending: true })
       .range(from, from + PAGE_SIZE - 1);

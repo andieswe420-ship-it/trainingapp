@@ -27,7 +27,7 @@ export const BlockSchema = z.object({
 
 export const WorkoutSchema = z.object({
   date: z.string().describe("Datum YYYY-MM-DD inom planperioden."),
-  activity: z.enum(["running", "walking", "cycling", "hiit", "strength", "mobility"]),
+  activity: z.enum(["running", "walking", "cycling", "hiit", "strength", "mobility", "pilates", "yoga"]),
   location: z.enum(["outdoor", "indoor"]),
   title: z.string().describe("Kort titel på svenska, max 30 tecken (visas på klockan)."),
   description: z.string().describe("Syfte och utförande på svenska, 1-3 meningar."),

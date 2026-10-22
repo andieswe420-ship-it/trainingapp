@@ -106,20 +106,22 @@ Så här coachar du:
   saker (t.ex. "jag är bortrest i helgen") sparas inte i profilen. Följ veckoschemat när du föreslår pass.
 - Formatregler för pass i förslag: uppvärmning/nedvarvning i minuter, huvuddelen som block med steg
   (distanspass = ett block med iterations=1 och ett work-steg; intervaller = iterations=N med ett
-  work-steg och ett recovery-steg; styrka/HIIT/rörlighet = tidsbaserade steg med target_type "none").`;
+  work-steg och ett recovery-steg; styrka/HIIT/rörlighet/pilates/yoga = tidsbaserade steg med
+  target_type "none"; använd activity "pilates" respektive "yoga" för de passen).`;
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Använd POST." }, 405);
-  const supabase = await userClient(req);
-  if (!supabase) return json({ error: "Inloggning krävs." }, 401);
+  const user = await userClient(req);
+  if (!user) return json({ error: "Inloggning krävs." }, 401);
+  const { supabase, userId } = user;
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   try {
     switch (body.action) {
       case "send":
-        return await send(supabase, typeof body.text === "string" ? body.text.trim() : "");
+        return await send(supabase, userId, typeof body.text === "string" ? body.text.trim() : "");
       case "checkin":
-        return await checkin(supabase);
+        return await checkin(supabase, userId);
       case "decide":
         return await decide(supabase, String(body.message_id ?? ""), body.accept === true);
       default:
@@ -133,7 +135,7 @@ Deno.serve(async (req: Request) => {
 
 // MARK: - Åtgärder
 
-async function send(supabase: SupabaseClient, text: string): Promise<Response> {
+async function send(supabase: SupabaseClient, userId: string, text: string): Promise<Response> {
   if (!text) return json({ error: "Tomt meddelande." }, 400);
   const { data: userMessage, error: userError } = await supabase
     .from("coach_messages")
@@ -143,11 +145,11 @@ async function send(supabase: SupabaseClient, text: string): Promise<Response> {
   if (userError || !userMessage) throw new Error(`Kunde inte spara meddelandet: ${userError?.message}`);
 
   const reply = await createPendingReply(supabase, {});
-  EdgeRuntime.waitUntil(generateReply(supabase, reply.id, null));
+  EdgeRuntime.waitUntil(generateReply(supabase, userId, reply.id, null));
   return json({ user_message_id: userMessage.id, assistant_message_id: reply.id }, 202);
 }
 
-async function checkin(supabase: SupabaseClient): Promise<Response> {
+async function checkin(supabase: SupabaseClient, userId: string): Promise<Response> {
   const since = new Date(Date.now() - CHECKIN_WINDOW_HOURS * 3600 * 1000).toISOString();
   const { data: recent, error } = await supabase
     .from("workouts")
@@ -169,7 +171,7 @@ async function checkin(supabase: SupabaseClient): Promise<Response> {
   } catch {
     return json({ created: false }); // Ett parallellt anrop hann före.
   }
-  EdgeRuntime.waitUntil(generateReply(supabase, reply.id, workoutId));
+  EdgeRuntime.waitUntil(generateReply(supabase, userId, reply.id, workoutId));
   return json({ created: true, assistant_message_id: reply.id }, 202);
 }
 
@@ -228,14 +230,19 @@ async function createPendingReply(
 
 // MARK: - Generering
 
-async function generateReply(supabase: SupabaseClient, replyId: string, checkinWorkoutId: string | null) {
+async function generateReply(
+  supabase: SupabaseClient,
+  userId: string,
+  replyId: string,
+  checkinWorkoutId: string | null,
+) {
   try {
     const today = dayKey(new Date());
     const [data, plan, history, profile] = await Promise.all([
-      loadAthleteData(supabase, HISTORY_DAYS),
-      loadActivePlan(supabase, today),
+      loadAthleteData(supabase, userId, HISTORY_DAYS),
+      loadActivePlan(supabase, userId, today),
       loadHistory(supabase, replyId),
-      loadProfile(supabase),
+      loadProfile(supabase, userId),
     ]);
 
     const messages = buildMessages(data, plan, profile, history, today, checkinWorkoutId);
