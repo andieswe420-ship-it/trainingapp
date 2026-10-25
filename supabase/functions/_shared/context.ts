@@ -19,6 +19,8 @@ export interface WorkoutRow {
   stride_length_meters: number | null;
   ground_contact_ms: number | null;
   vertical_oscillation_cm: number | null;
+  /** Vad passet faktiskt var enligt personen (sparas av coachen). */
+  athlete_note: string | null;
 }
 
 export interface SampleRow {
@@ -76,7 +78,7 @@ export interface AthleteData {
 
 const WORKOUT_COLUMNS = "id, activity_name, started_at, ended_at, duration_seconds, avg_heart_rate, max_heart_rate, " +
   "distance_meters, heart_rate_recovery_1min, heart_rate_buckets, running_power_watts, stride_length_meters, " +
-  "ground_contact_ms, vertical_oscillation_cm";
+  "ground_contact_ms, vertical_oscillation_cm, athlete_note";
 const DAILY_COLUMNS = "date, steps, active_energy_kcal, exercise_minutes, stand_hours, sleep_total_minutes, " +
   "sleep_deep_minutes, sleep_rem_minutes, sleep_core_minutes, sleep_awake_minutes, respiratory_rate, " +
   "wrist_temperature_celsius";
@@ -267,6 +269,7 @@ export function describeWorkout(w: WorkoutRow, detailed: boolean): string {
     }
   }
   if (w.avg_heart_rate) parts.push(`snittpuls ${Math.round(w.avg_heart_rate)}`);
+  if (w.athlete_note) parts.push(`enligt personen: "${w.athlete_note}"`);
   if (detailed) {
     if (w.max_heart_rate) parts.push(`maxpuls ${Math.round(w.max_heart_rate)}`);
     if (w.heart_rate_recovery_1min) parts.push(`pulsåterhämtning 1 min: ${Math.round(w.heart_rate_recovery_1min)} slag`);

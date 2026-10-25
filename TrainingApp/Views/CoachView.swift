@@ -175,6 +175,12 @@ private struct CoachMessageView: View {
                 .foregroundStyle(.tint)
                 .frame(maxWidth: 320, alignment: .leading)
             }
+            if let note = message.workoutNote {
+                Label("Passet noterat: \(note.summary)", systemImage: "figure.run")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 320, alignment: .leading)
+            }
             Text(message.createdAt.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)

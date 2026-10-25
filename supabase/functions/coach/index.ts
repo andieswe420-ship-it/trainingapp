@@ -61,6 +61,19 @@ const ProfileUpdateSchema = z.object({
 });
 const { $schema: _ignored2, ...PROFILE_JSON_SCHEMA } = z.toJSONSchema(ProfileUpdateSchema, { target: "draft-7" });
 
+const WorkoutNoteSchema = z.object({
+  date: z.string().describe("Datum för passet, YYYY-MM-DD."),
+  time: z.string().optional().describe("Starttid HH:MM, behövs bara om det finns flera pass samma dag."),
+  note: z.string().describe(
+    "Vad passet var och hur det kändes enligt personen, kort på svenska, t.ex. \"Intervaller på löpband, " +
+      "ansträngning 7/10, tunga ben\". Ersätter en tidigare anteckning – ta med det som fortfarande gäller.",
+  ),
+});
+const { $schema: _ignored3, ...WORKOUT_NOTE_JSON_SCHEMA } = z.toJSONSchema(WorkoutNoteSchema, { target: "draft-7" });
+
+/** Rader som appen lägger in i historiken och som modellen inte ska skriva själv. */
+const APP_NOTE_PATTERN = /^\s*\[(Notis från appen|Föreslagen planändring|Profil uppdaterad|Pass noterat)[^\]]*\]\s*$/gm;
+
 interface Proposal {
   reason: string;
   window_start: string;
@@ -78,6 +91,7 @@ interface MessageRow {
   proposal_status: "pending" | "accepted" | "rejected" | null;
   plan_id: string | null;
   profile_update: { summary: string } | null;
+  workout_note: { summary: string } | null;
   created_at: string;
 }
 
@@ -93,11 +107,20 @@ Så här coachar du:
 - Bevaka formen löpande: sömn, HRV, vilopuls och känsla. Om flera tecken pekar på trötthet eller
   begynnande sjukdom (förhöjd vilopuls, andningsfrekvens och handledstemperatur samtidigt) – säg det och
   föreslå lättare träning eller vila. Vid smärta eller skada: råd till vila och att söka vård vid behov.
-- När personen berättar hur ett pass kändes: koppla ihop känslan med datan och använd det i bedömningen
-  av kommande pass.
-- Om kommande pass bör ändras (form, sjukdom, schema, önskemål) – använd verktyget propose_plan_change.
-  Ändringen träder i kraft först när personen godkänner den i appen, så beskriv kort i texten vad du
-  föreslår. Föreslå bara ändringar när det finns en tydlig anledning. Ändra aldrig planen på annat sätt.
+- Det som faktiskt hänt går före planen. Anta aldrig att ett genomfört pass var det planerade passet –
+  utgå från datan (typ, tid, puls, tempo, pulsfördelning) och det personen berättat. Ser passet annorlunda
+  ut än planerat: säg det och fråga vad det blev. Nämn bara pass och värden som finns i datan eller
+  samtalet; säg aldrig att något hände en dag om det inte står där.
+- När personen berättar vad ett pass var eller hur det kändes (t.ex. "det blev intervaller inomhus",
+  ansträngning, tunga ben): spara det på passet med verktyget log_workout, så att du och veckoplaneringen
+  minns det framöver. Koppla ihop känslan med datan och använd det i bedömningen av kommande pass.
+- Om kommande pass bör ändras (form, sjukdom, schema, önskemål, eller att personen redan flyttat eller
+  bytt ett pass) – använd verktyget propose_plan_change. Ändringen träder i kraft först när personen
+  godkänner den i appen, så beskriv kort i texten vad du föreslår. Skriv aldrig att en ändring är gjord
+  eller godkänd – planen ändras bara via verktyget och personens godkännande. Föreslå bara ändringar när
+  det finns en tydlig anledning.
+- Rader inom hakparentes som börjar med "Notis från appen" är skrivna av appen, inte av dig. Skriv aldrig
+  sådana rader själv.
 - Finns ingen aktiv plan kan du inte föreslå ändringar; tipsa då om att skapa en ny veckoplan under
   fliken Plan.
 - Personens profil (mål, veckoschema, skador, övrigt) är det som gäller långsiktigt och används även när
@@ -255,6 +278,11 @@ async function generateReply(
       maxTokens: MAX_TOKENS,
       tools: [
         {
+          name: "log_workout",
+          description: "Spara vad ett genomfört pass faktiskt var och hur det kändes, enligt personen.",
+          parameters: WORKOUT_NOTE_JSON_SCHEMA,
+        },
+        {
           name: "update_profile",
           description: "Spara bestående information i personens profil (mål, veckoschema, skador, övrigt). " +
             "Ange bara de fält som ändras.",
@@ -274,6 +302,8 @@ async function generateReply(
 
     const profileCall = result.toolCalls.find((c) => c.function.name === "update_profile");
     const profileUpdate = profileCall ? await applyProfileUpdate(supabase, profile, profileCall) : null;
+    const noteCall = result.toolCalls.find((c) => c.function.name === "log_workout");
+    const workoutNote = noteCall ? await applyWorkoutNote(supabase, userId, data.workouts, noteCall) : null;
 
     let proposal: Proposal | null = null;
     const call = result.toolCalls.find((c) => c.function.name === "propose_plan_change");
@@ -291,7 +321,8 @@ async function generateReply(
       }
     }
 
-    const content = result.content || proposal?.reason || profileUpdate?.summary || "";
+    const content = result.content.replace(APP_NOTE_PATTERN, "").trim() || proposal?.reason ||
+      profileUpdate?.summary || workoutNote?.summary || "";
     if (!content) throw new Error("AI-coachen svarade inte. Försök igen.");
 
     const { error } = await supabase
@@ -304,6 +335,7 @@ async function generateReply(
         proposal_status: proposal ? "pending" : null,
         plan_id: proposal ? plan!.id : null,
         profile_update: profileUpdate,
+        workout_note: workoutNote,
         updated_at: new Date().toISOString(),
       })
       .eq("id", replyId);
@@ -320,7 +352,7 @@ async function generateReply(
 async function loadHistory(supabase: SupabaseClient, excludeId: string): Promise<MessageRow[]> {
   const { data, error } = await supabase
     .from("coach_messages")
-    .select("id, role, content, status, workout_id, proposal, proposal_status, plan_id, profile_update, created_at")
+    .select("id, role, content, status, workout_id, proposal, proposal_status, plan_id, profile_update, workout_note, created_at")
     .neq("id", excludeId)
     .eq("status", "done")
     .order("created_at", { ascending: false })
@@ -361,17 +393,19 @@ function buildMessages(
     if (m.role === "assistant" && m.workout_id) {
       push(messages, "user", workoutNotice(workoutsById.get(m.workout_id)));
     }
-    let content = m.content;
+    push(messages, m.role, m.content.replace(APP_NOTE_PATTERN, "").trim());
+    // Vad verktygen gjorde läggs som en notis från appen efter svaret – inte i coachens egen text,
+    // annars härmar modellen formatet i stället för att anropa verktygen.
+    const notes: string[] = [];
     if (m.proposal) {
-      const status = { pending: "väntar på svar", accepted: "godkänd", rejected: "avböjd" }[m.proposal_status ?? "pending"];
-      content += `\n[Föreslagen planändring (${status}): ${m.proposal.reason}. Pass: ${
+      const status = { pending: "inte svarat på", accepted: "godkänt", rejected: "avböjt" }[m.proposal_status ?? "pending"];
+      notes.push(`coachen föreslog en planändring som personen har ${status}: ${m.proposal.reason}. Pass: ${
         m.proposal.workouts.map((w) => `${w.date}: ${describePlannedWorkout(w)}`).join(" / ") || "inga"
-      }]`;
+      }`);
     }
-    if (m.profile_update) {
-      content += `\n[Profil uppdaterad: ${m.profile_update.summary}]`;
-    }
-    push(messages, m.role, content);
+    if (m.profile_update) notes.push(`profilen uppdaterades: ${m.profile_update.summary}`);
+    if (m.workout_note) notes.push(`anteckning sparad på passet: ${m.workout_note.summary}`);
+    if (notes.length) push(messages, "user", `[Notis från appen: ${notes.join("; ")}]`);
   }
 
   if (checkinWorkoutId) {
@@ -380,8 +414,9 @@ function buildMessages(
       "user",
       `${workoutNotice(workoutsById.get(checkinWorkoutId))}\n` +
         "[Ställ en kort, personlig fråga om hur passet kändes – t.ex. ansträngning 1-10 och hur kroppen " +
-        "kändes – och kommentera gärna något konkret i datan från passet. Max 3-4 meningar. Föreslå inga " +
-        "planändringar förrän personen svarat, om inte datan tydligt kräver det.]",
+        "kändes – och kommentera gärna något konkret i datan från passet. Utgå från datan, inte från planen: " +
+        "om passet ser ut att vara något annat än det planerade, säg det och fråga vad det blev. Max 3-4 " +
+        "meningar. Föreslå inga planändringar förrän personen svarat, om inte datan tydligt kräver det.]",
     );
   }
 
@@ -434,6 +469,38 @@ async function applyProfileUpdate(
     return null;
   }
   return { summary: update.summary, fields };
+}
+
+/** Sparar personens beskrivning av ett genomfört pass på passet. */
+async function applyWorkoutNote(
+  supabase: SupabaseClient,
+  userId: string,
+  workouts: WorkoutRow[],
+  call: ToolCall,
+): Promise<{ summary: string } | null> {
+  const parsed = WorkoutNoteSchema.safeParse(safeJson(call.function.arguments));
+  if (!parsed.success || !parsed.data.note.trim()) {
+    console.error("invalid workout note", parsed.success ? "empty note" : parsed.error.issues.slice(0, 5));
+    return null;
+  }
+  const { date, time, note } = parsed.data;
+  const sameDay = workouts.filter((w) => dayKey(w.started_at) === date);
+  const workout = sameDay.find((w) => time && clockTime(w.started_at) === time) ?? sameDay[sameDay.length - 1];
+  if (!workout) {
+    console.error("workout note: no workout on", date);
+    return null;
+  }
+  const text = note.trim().slice(0, 500);
+  const { error } = await supabase
+    .from("workouts")
+    .update({ athlete_note: text })
+    .eq("id", workout.id)
+    .eq("user_id", userId);
+  if (error) {
+    console.error("workout note failed", error);
+    return null;
+  }
+  return { summary: `${weekday(date)} ${clockTime(workout.started_at)} ${workout.activity_name.toLowerCase()} – ${text}` };
 }
 
 function workoutNotice(workout: WorkoutRow | undefined): string {

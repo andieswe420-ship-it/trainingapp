@@ -166,9 +166,12 @@ async function send(
   if (choice?.finish_reason === "content_filter") {
     throw new AIError("AI-coachen avböjde att svara. Försök formulera om dig.");
   }
+  const toolCalls = choice?.message?.tool_calls ?? [];
+  console.log(`${name} svarade: ${result.model ?? fallbackModel}, finish_reason=${choice?.finish_reason}, ` +
+    `verktyg=${toolCalls.map((c) => c.function.name).join(",") || "inga"}`);
   return {
     content: stripThinking(choice?.message?.content ?? ""),
-    toolCalls: choice?.message?.tool_calls ?? [],
+    toolCalls,
     model: result.model ?? fallbackModel,
   };
 }

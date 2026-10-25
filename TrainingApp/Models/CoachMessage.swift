@@ -16,6 +16,8 @@ struct CoachMessage: Decodable, Identifiable, Hashable, Sendable {
     let proposalStatus: ProposalStatus?
     /// Satt när coachen uppdaterade profilen i samband med svaret.
     let profileUpdate: ProfileUpdate?
+    /// Satt när coachen sparade en anteckning om ett genomfört pass.
+    let workoutNote: ProfileUpdate?
     let error: String?
     let createdAt: Date
 
@@ -24,6 +26,7 @@ struct CoachMessage: Decodable, Identifiable, Hashable, Sendable {
         case workoutId = "workout_id"
         case proposalStatus = "proposal_status"
         case profileUpdate = "profile_update"
+        case workoutNote = "workout_note"
         case createdAt = "created_at"
     }
 
