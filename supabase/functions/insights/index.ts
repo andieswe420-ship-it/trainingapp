@@ -138,6 +138,8 @@ async function generate(
       effort: "medium",
       maxTokens: MAX_TOKENS,
       responseFormat: { name: "trend_insight", schema: INSIGHT_JSON_SCHEMA },
+      bergetEffort: "low",
+      timeoutMs: 120_000,
     });
     if (!result.content) throw new AIError("AI-coachen returnerade ingen analys.");
 

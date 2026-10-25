@@ -40,8 +40,11 @@ export interface ChatRequest {
   maxTokens: number;
   responseFormat?: { name: string; schema: Record<string, unknown> };
   tools?: { name: string; description: string; parameters: Record<string, unknown> }[];
-  /** Annan modell hos Berget än BERGET_MODEL, t.ex. en snabbare för stora strukturerade svar. */
+  /** Annan modell hos Berget än BERGET_MODEL. */
   bergetModel?: string;
+  /** Resonemangsnivå hos Berget om den ska skilja sig från effort. Kimi med fullt resonemang tar över
+   * 100 s för en veckoplan; med "low" ~30 s, lika bra plan och en femtedel av utsläppen. */
+  bergetEffort?: "low" | "medium" | "high";
   timeoutMs?: number;
 }
 
@@ -110,6 +113,7 @@ async function callBerget(request: ChatRequest): Promise<ChatResult> {
   const body: Record<string, unknown> = {
     model,
     max_tokens: Math.min(request.maxTokens, BERGET_MAX_TOKENS),
+    reasoning_effort: request.bergetEffort ?? request.effort,
     // cache_control är OpenRouter/Anthropic-specifikt – skicka vanlig text.
     messages: request.messages.map((m) => ({
       role: m.role,

@@ -57,7 +57,14 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    **AI-leverantör** (`_shared/ai.ts`, OpenAI-kompatibla chat completions) väljs med Edge Function-
    secrets: `AI_PROVIDER` = `openrouter` (standard) eller `berget` (Berget AI, Stockholm, med
    `BERGET_API_KEY` och valfri `BERGET_MODEL`, standard `moonshotai/Kimi-K3`). Med Berget används
-   OpenRouter som reserv vid fel. Kolumnen `model` visar vilken modell som svarade (`berget/...`).
+   OpenRouter som reserv vid fel (inte vid timeout). Kolumnen `model` visar vilken modell som svarade
+   (`berget/...`). `reasoning_effort` skickas till Berget – planer och trendanalys kör `low` (Kimi med fullt
+   resonemang tar >100 s för en veckoplan, mot Edge Functions tidsgräns 150 s; med `low` ~30 s). Planer och
+   analyser avbryts efter 120 s och markeras `failed` så att raden inte blir hängande. Berget returnerar
+   CO₂ per anrop i `usage.co2_grams`.
+   **Coachens minne:** `log_workout` sparar vad ett pass faktiskt var (`workouts.athlete_note`, visas i
+   chatten via `coach_messages.workout_note`) och följer med i all kontext. Verktygsresultat läggs i
+   historiken som "Notis från appen" – aldrig i coachens text, annars härmar modellen formatet.
    Nycklarna (`OPENROUTER_API_KEY`, `BERGET_API_KEY`) är secrets i Supabase – aldrig i appen eller repot.
    **Automatisk veckoplan** – Edge Function `weekly-plans` anropas av pg_cron söndagar 17:00 UTC
    och skapar måndag–söndag-planer för profiler med `auto_weekly_plan`. Den kör med service role

@@ -9,9 +9,8 @@ import { cleanWorkouts, type Plan, PlanSchema } from "./schema.ts";
 const HISTORY_DAYS = 90;
 /** Med effort "medium" reserveras ~hälften av max_tokens för resonemang. */
 const MAX_TOKENS = 48000;
-/** Kimi hinner inte skriva en hel plan inom Edge Functions tidsgräns (150 s) – planer görs med en snabbare
- * modell hos Berget. Kan bytas med secret BERGET_PLAN_MODEL. */
-const PLAN_BERGET_MODEL = Deno.env.get("BERGET_PLAN_MODEL")?.trim() || "zai-org/GLM-5.3-Flash";
+/** Valfri annan modell hos Berget för planer (secret BERGET_PLAN_MODEL), annars BERGET_MODEL. */
+const PLAN_BERGET_MODEL = Deno.env.get("BERGET_PLAN_MODEL")?.trim() || undefined;
 /** Under tidsgränsen, så att raden hinner markeras som misslyckad i stället för att bli hängande. */
 const TIMEOUT_MS = 120_000;
 
@@ -123,6 +122,7 @@ async function askModel(
     maxTokens: MAX_TOKENS,
     responseFormat: { name: "training_plan", schema: PLAN_JSON_SCHEMA },
     bergetModel: PLAN_BERGET_MODEL,
+    bergetEffort: "low",
     timeoutMs: TIMEOUT_MS,
   });
   if (!result.content) throw new AIError("AI-coachen returnerade ingen plan.");
