@@ -9,6 +9,11 @@ import { cleanWorkouts, type Plan, PlanSchema } from "./schema.ts";
 const HISTORY_DAYS = 90;
 /** Med effort "medium" reserveras ~hälften av max_tokens för resonemang. */
 const MAX_TOKENS = 48000;
+/** Kimi hinner inte skriva en hel plan inom Edge Functions tidsgräns (150 s) – planer görs med en snabbare
+ * modell hos Berget. Kan bytas med secret BERGET_PLAN_MODEL. */
+const PLAN_BERGET_MODEL = Deno.env.get("BERGET_PLAN_MODEL")?.trim() || "zai-org/GLM-5.3-Flash";
+/** Under tidsgränsen, så att raden hinner markeras som misslyckad i stället för att bli hängande. */
+const TIMEOUT_MS = 120_000;
 
 // JSON-schema för strukturerad output (strict: alla fält krävs, additionalProperties: false).
 const { $schema: _ignored, ...PLAN_JSON_SCHEMA } = z.toJSONSchema(PlanSchema, { target: "draft-7" });
@@ -51,7 +56,7 @@ export async function createPendingPlan(
 ): Promise<string> {
   const { data, error } = await supabase
     .from("training_plans")
-    .insert({ user_id: userId, start_date: startDate, end_date: endDate, notes: notes || null, model: defaultModel() })
+    .insert({ user_id: userId, start_date: startDate, end_date: endDate, notes: notes || null, model: defaultModel(PLAN_BERGET_MODEL) })
     .select("id")
     .single();
   if (error || !data) throw new Error(`Kunde inte skapa plan: ${error?.message}`);
@@ -117,6 +122,8 @@ async function askModel(
     effort: "medium",
     maxTokens: MAX_TOKENS,
     responseFormat: { name: "training_plan", schema: PLAN_JSON_SCHEMA },
+    bergetModel: PLAN_BERGET_MODEL,
+    timeoutMs: TIMEOUT_MS,
   });
   if (!result.content) throw new AIError("AI-coachen returnerade ingen plan.");
 

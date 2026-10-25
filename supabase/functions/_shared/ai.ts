@@ -2,7 +2,8 @@
 // - AI_PROVIDER: "openrouter" (standard) eller "berget"
 // - OPENROUTER_API_KEY: nyckel till OpenRouter (Claude)
 // - BERGET_API_KEY + BERGET_MODEL: nyckel och modell hos Berget AI (Stockholm)
-// Med Berget som leverantör används OpenRouter som reserv om Berget svarar med fel.
+// Med Berget som leverantör används OpenRouter som reserv om Berget svarar med fel (men inte om
+// anropet tog för lång tid – då finns ingen tid kvar inom Edge Functions tidsgräns).
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const BERGET_URL = "https://api.berget.ai/v1/chat/completions";
@@ -18,6 +19,7 @@ type Provider = "openrouter" | "berget";
 
 /** Fel med ett meddelande som kan visas för användaren. */
 export class AIError extends Error {}
+class AITimeoutError extends AIError {}
 
 export type ContentPart = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
 
@@ -38,6 +40,9 @@ export interface ChatRequest {
   maxTokens: number;
   responseFormat?: { name: string; schema: Record<string, unknown> };
   tools?: { name: string; description: string; parameters: Record<string, unknown> }[];
+  /** Annan modell hos Berget än BERGET_MODEL, t.ex. en snabbare för stora strukturerade svar. */
+  bergetModel?: string;
+  timeoutMs?: number;
 }
 
 export interface ChatResult {
@@ -64,8 +69,8 @@ function bergetModel(): string {
 }
 
 /** Modellen som förväntas svara – sparas på rader som skapas innan svaret finns. */
-export function defaultModel(): string {
-  return provider() === "berget" ? `berget/${bergetModel()}` : OPENROUTER_MODELS[0];
+export function defaultModel(bergetOverride?: string): string {
+  return provider() === "berget" ? `berget/${bergetOverride ?? bergetModel()}` : OPENROUTER_MODELS[0];
 }
 
 export async function chat(request: ChatRequest): Promise<ChatResult> {
@@ -73,7 +78,7 @@ export async function chat(request: ChatRequest): Promise<ChatResult> {
     try {
       return await callBerget(request);
     } catch (err) {
-      if (!Deno.env.get("OPENROUTER_API_KEY")) throw err;
+      if (err instanceof AITimeoutError || !Deno.env.get("OPENROUTER_API_KEY")) throw err;
       console.error("Berget AI misslyckades, använder OpenRouter som reserv", err);
     }
   }
@@ -94,13 +99,13 @@ async function callOpenRouter(request: ChatRequest): Promise<ChatResult> {
     // Skicka bara till leverantörer som faktiskt stöder strukturerad output.
     body.provider = { require_parameters: true };
   }
-  return await send("OpenRouter", OPENROUTER_URL, apiKey, withFormatAndTools(body, request), OPENROUTER_MODELS[0]);
+  return await send("OpenRouter", OPENROUTER_URL, apiKey, withFormatAndTools(body, request), OPENROUTER_MODELS[0], request.timeoutMs);
 }
 
 async function callBerget(request: ChatRequest): Promise<ChatResult> {
   const apiKey = Deno.env.get("BERGET_API_KEY");
   if (!apiKey) throw new AIError("BERGET_API_KEY saknas i Supabase (Edge Functions → Secrets).");
-  const model = bergetModel();
+  const model = request.bergetModel ?? bergetModel();
 
   const body: Record<string, unknown> = {
     model,
@@ -111,7 +116,7 @@ async function callBerget(request: ChatRequest): Promise<ChatResult> {
       content: typeof m.content === "string" ? m.content : m.content.map((part) => part.text).join("\n\n"),
     })),
   };
-  const result = await send("Berget AI", BERGET_URL, apiKey, withFormatAndTools(body, request), model);
+  const result = await send("Berget AI", BERGET_URL, apiKey, withFormatAndTools(body, request), model, request.timeoutMs);
   return { ...result, model: `berget/${result.model}` };
 }
 
@@ -135,6 +140,7 @@ async function send(
   apiKey: string,
   body: Record<string, unknown>,
   fallbackModel: string,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<ChatResult> {
   let response: Response;
   try {
@@ -146,11 +152,11 @@ async function send(
         "X-Title": "TrainingApp",
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new AIError("AI-tjänsten svarade inte i tid. Försök igen.");
+      throw new AITimeoutError("AI-tjänsten svarade inte i tid. Försök igen.");
     }
     throw err;
   }
