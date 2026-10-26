@@ -19,6 +19,8 @@ export interface WorkoutRow {
   stride_length_meters: number | null;
   ground_contact_ms: number | null;
   vertical_oscillation_cm: number | null;
+  /** Vad passet faktiskt var enligt personen (sparas av coachen). */
+  athlete_note: string | null;
 }
 
 export interface SampleRow {
@@ -76,7 +78,7 @@ export interface AthleteData {
 
 const WORKOUT_COLUMNS = "id, activity_name, started_at, ended_at, duration_seconds, avg_heart_rate, max_heart_rate, " +
   "distance_meters, heart_rate_recovery_1min, heart_rate_buckets, running_power_watts, stride_length_meters, " +
-  "ground_contact_ms, vertical_oscillation_cm";
+  "ground_contact_ms, vertical_oscillation_cm, athlete_note";
 const DAILY_COLUMNS = "date, steps, active_energy_kcal, exercise_minutes, stand_hours, sleep_total_minutes, " +
   "sleep_deep_minutes, sleep_rem_minutes, sleep_core_minutes, sleep_awake_minutes, respiratory_rate, " +
   "wrist_temperature_celsius";
@@ -122,30 +124,35 @@ function weekStart(day: string): string {
 
 // MARK: - Hämtning
 
-export async function loadAthleteData(supabase: SupabaseClient, days: number): Promise<AthleteData> {
+// Alla frågor filtrerar på user_id: med användarens klient är det dubbelt upp mot RLS, med
+// service role-klienten (schemalagda jobb) är det det enda som skiljer användarna åt.
+
+export async function loadAthleteData(supabase: SupabaseClient, userId: string, days: number): Promise<AthleteData> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
   const [workouts, samples, daily] = await Promise.all([
-    fetchAll<WorkoutRow>(supabase, "workouts", WORKOUT_COLUMNS, "started_at", since),
-    fetchAll<SampleRow>(supabase, "health_samples", "kind, value, measured_at", "measured_at", since),
-    fetchAll<DailyRow>(supabase, "daily_metrics", DAILY_COLUMNS, "date", since.slice(0, 10)),
+    fetchAll<WorkoutRow>(supabase, userId, "workouts", WORKOUT_COLUMNS, "started_at", since),
+    fetchAll<SampleRow>(supabase, userId, "health_samples", "kind, value, measured_at", "measured_at", since),
+    fetchAll<DailyRow>(supabase, userId, "daily_metrics", DAILY_COLUMNS, "date", since.slice(0, 10)),
   ]);
   return { workouts, samples, daily };
 }
 
-export async function loadProfile(supabase: SupabaseClient): Promise<ProfileRow | null> {
+export async function loadProfile(supabase: SupabaseClient, userId: string): Promise<ProfileRow | null> {
   const { data, error } = await supabase
     .from("athlete_profiles")
     .select("goals, weekly_schedule, limitations, notes, updated_at")
+    .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(`Kunde inte läsa profilen: ${error.message}`);
   return data as ProfileRow | null;
 }
 
 /** Senaste planen som fortfarande pågår (slutdatum idag eller senare), om någon. */
-export async function loadActivePlan(supabase: SupabaseClient, today: string): Promise<PlanRow | null> {
+export async function loadActivePlan(supabase: SupabaseClient, userId: string, today: string): Promise<PlanRow | null> {
   const { data, error } = await supabase
     .from("training_plans")
     .select("id, start_date, end_date, plan")
+    .eq("user_id", userId)
     .eq("status", "ready")
     .gte("end_date", today)
     .order("created_at", { ascending: false })
@@ -156,6 +163,7 @@ export async function loadActivePlan(supabase: SupabaseClient, today: string): P
 
 async function fetchAll<T>(
   supabase: SupabaseClient,
+  userId: string,
   table: string,
   columns: string,
   orderColumn: string,
@@ -166,6 +174,7 @@ async function fetchAll<T>(
     const { data, error } = await supabase
       .from(table)
       .select(columns)
+      .eq("user_id", userId)
       .gte(orderColumn, since)
       .order(orderColumn, { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
@@ -260,6 +269,7 @@ export function describeWorkout(w: WorkoutRow, detailed: boolean): string {
     }
   }
   if (w.avg_heart_rate) parts.push(`snittpuls ${Math.round(w.avg_heart_rate)}`);
+  if (w.athlete_note) parts.push(`enligt personen: "${w.athlete_note}"`);
   if (detailed) {
     if (w.max_heart_rate) parts.push(`maxpuls ${Math.round(w.max_heart_rate)}`);
     if (w.heart_rate_recovery_1min) parts.push(`pulsåterhämtning 1 min: ${Math.round(w.heart_rate_recovery_1min)} slag`);

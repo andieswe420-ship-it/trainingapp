@@ -47,7 +47,11 @@ struct CoachView: View {
             .sheet(isPresented: $showProfile) { ProfileView() }
         }
         .task(id: sync.userEmail) { await store.refresh() }
-        .onAppear { store.isVisible = true }
+        .onAppear {
+            store.isVisible = true
+            takePrefill()
+        }
+        .onChange(of: store.prefill) { _, _ in takePrefill() }
         .onDisappear { store.isVisible = false }
     }
 
@@ -107,6 +111,12 @@ struct CoachView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func takePrefill() {
+        guard let prefill = store.prefill else { return }
+        draft = prefill
+        store.prefill = nil
+    }
+
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.isSending && !store.hasPendingReply
     }
@@ -164,6 +174,12 @@ private struct CoachMessageView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.tint)
                 .frame(maxWidth: 320, alignment: .leading)
+            }
+            if let note = message.workoutNote {
+                Label("Passet noterat: \(note.summary)", systemImage: "figure.run")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 320, alignment: .leading)
             }
             Text(message.createdAt.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
                 .font(.caption2)
