@@ -47,7 +47,10 @@ const TIMEOUT_MS = 120_000;
 
 // Strukturerad output kräver att alla fält finns – det som inte gäller anges som null.
 const ProposalInputSchema = z.object({
-  reason: z.string().describe("Kort förklaring på svenska av vad som ändras och varför."),
+  reason: z.string().describe(
+    "Kort motivering på svenska, formulerad som ett förslag: \"Förslag: intervallerna på onsdag i stället för " +
+      "tisdag, eftersom …\". Aldrig i presens som om ändringen redan görs (\"Flyttar …\", \"Ändrar …\").",
+  ),
   workouts: z.array(WorkoutSchema).describe(
     "HELA den nya listan av pass från idag till planens slut – även pass som inte ändras. Vilodagar utelämnas.",
   ),
@@ -136,8 +139,9 @@ Så här coachar du:
 - Om kommande pass bör ändras (form, sjukdom, schema, önskemål, eller att personen ber om det): fyll i
   proposal med hela den nya passlistan från idag till planens slut. Ändringen träder i kraft först när
   personen godkänner den i appen. Formulera det därför alltid som ett förslag i reply: "Jag föreslår att
-  …" – aldrig "jag flyttar", "jag har ändrat" eller "flyttas", och lova aldrig en ändring utan att fylla i
-  proposal. Föreslå bara ändringar när det finns en tydlig anledning.
+  …" – aldrig "jag flyttar", "jag har ändrat", "flyttas" eller "stryks", varken i reply eller i
+  proposal.reason (som börjar med "Förslag:"). Lova aldrig en ändring utan att fylla i proposal. Föreslå
+  bara ändringar när det finns en tydlig anledning.
 - Tänk igenom svaret innan du skriver det: reply ska vara färdigt och konsekvent, utan att du ändrar dig
   eller rättar dig själv mitt i texten. Ser du en risk med det personen ber om (t.ex. två hårda pass tätt
   inpå varandra), säg det tydligt och föreslå ett bättre alternativ.
