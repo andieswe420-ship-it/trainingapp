@@ -45,12 +45,14 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    max en gång per pass via unikt index), `decide` (godkänn/avböj förslag). Svar skapas som
    `pending` i `coach_messages` och fylls i bakgrunden; `CoachStore` pollar. Coachen ser samma
    kontext som planeraren plus aktuell plan (med genomförda pass) och konversationen, och kan
-   föreslå ändringar via verktyget `propose_plan_change` (hela passlistan för idag–planens
-   slut). Förslag tillämpas bara när användaren godkänner. Effort `low`, kontexten cachas.
+   föreslå ändringar. Coachen svarar med strukturerad output (`coach_reply`: `reply`, `workout_note`,
+   `proposal` med hela passlistan för idag–planens slut, `profile_update` – null när de inte gäller),
+   inte verktygsanrop: Kimi hos Berget anropar aldrig verktyg. Förslag tillämpas bara när användaren
+   godkänner. Effort `low`, 120 s tidsgräns, kontexten cachas.
    **Profil** – `athlete_profiles` (mål, veckoschema per veckodag, skador/begränsningar,
    övrigt). Både coach och planerare läser den (`describeProfile` i `_shared/context.ts`);
-   planeraren följer veckoschemat. Coachen sparar bestående saker själv via verktyget
-   `update_profile` (utan godkännande, veckodagar slås ihop) och det visas i chatten
+   planeraren följer veckoschemat. Coachen sparar bestående saker själv via fältet
+   `profile_update` (utan godkännande, veckodagar slås ihop) och det visas i chatten
    (`coach_messages.profile_update`). Användaren kan redigera profilen i `ProfileView`
    (knapp i Plan- och Coach-fliken).
    Delad serverkod ligger i `supabase/functions/_shared/` (kontext, schema, AI-anrop, auth).
@@ -64,8 +66,8 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    CO₂ per anrop i `usage.co2_grams` – det sparas i `co2_grams` på `coach_messages`, `training_plans` och
    `trend_insights` och summeras via vyn `ai_usage` (security_invoker) i kortet "AI-användningens
    klimatavtryck" i Trender (`AIUsage`, `SyncService.fetchAIUsage`).
-   **Coachens minne:** `log_workout` sparar vad ett pass faktiskt var (`workouts.athlete_note`, visas i
-   chatten via `coach_messages.workout_note`) och följer med i all kontext. Verktygsresultat läggs i
+   **Coachens minne:** fältet `workout_note` sparar vad ett pass faktiskt var (`workouts.athlete_note`, visas i
+   chatten via `coach_messages.workout_note`) och följer med i all kontext. Vad åtgärderna gjorde läggs i
    historiken som "Notis från appen" – aldrig i coachens text, annars härmar modellen formatet.
    Nycklarna (`OPENROUTER_API_KEY`, `BERGET_API_KEY`) är secrets i Supabase – aldrig i appen eller repot.
    **Automatisk veckoplan** – Edge Function `weekly-plans` anropas av pg_cron söndagar 17:00 UTC

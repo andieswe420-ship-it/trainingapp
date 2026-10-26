@@ -7,8 +7,10 @@
 // - "decide"  { message_id, accept }   – godkänn eller avböj ett förslag på planändring.
 //
 // Svar skapas som en rad med status 'pending' i coach_messages som fylls i bakgrunden
-// (EdgeRuntime.waitUntil); appen pollar raden. Coachen kan föreslå planändringar via verktyget
-// propose_plan_change – de sparas som förslag och tillämpas först när användaren godkänner.
+// (EdgeRuntime.waitUntil); appen pollar raden. Coachen svarar i ett fast JSON-format (strukturerad
+// output) med svarstext och valfria åtgärder: anteckning om ett pass, planförslag och profiländring.
+// Verktygsanrop användes tidigare, men Kimi hos Berget anropade dem aldrig – strukturerad output
+// fungerar med både Berget och OpenRouter. Planförslag tillämpas först när användaren godkänner.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -32,7 +34,7 @@ import {
   WEEKDAYS,
   type WorkoutRow,
 } from "../_shared/context.ts";
-import { chat, type ChatMessage, defaultModel, errorMessage, json, type ToolCall } from "../_shared/ai.ts";
+import { AIError, chat, type ChatMessage, defaultModel, errorMessage, json } from "../_shared/ai.ts";
 import { cleanWorkouts, WorkoutSchema } from "../_shared/schema.ts";
 
 const HISTORY_DAYS = 90;
@@ -40,36 +42,53 @@ const HISTORY_MESSAGES = 40;
 const CHECKIN_WINDOW_HOURS = 48;
 /** Med effort "low" reserveras ~20 % av max_tokens för resonemang. */
 const MAX_TOKENS = 24000;
+/** Under Edge Functions tidsgräns (150 s), så att svaret hinner markeras som misslyckat. */
+const TIMEOUT_MS = 120_000;
 
+// Strukturerad output kräver att alla fält finns – det som inte gäller anges som null.
 const ProposalInputSchema = z.object({
   reason: z.string().describe("Kort förklaring på svenska av vad som ändras och varför."),
   workouts: z.array(WorkoutSchema).describe(
-    "HELA den nya listan av pass för de berörda datumen – även pass som inte ändras. Vilodagar utelämnas.",
+    "HELA den nya listan av pass från idag till planens slut – även pass som inte ändras. Vilodagar utelämnas.",
   ),
 });
-const { $schema: _ignored, ...PROPOSAL_JSON_SCHEMA } = z.toJSONSchema(ProposalInputSchema, { target: "draft-7" });
 
-const dayText = z.string().describe("Vad dagen ska innehålla, t.ex. \"Vila\" eller \"Intervaller inomhus\". Tom sträng = flexibel.");
+const dayText = z.string().nullable().describe(
+  "Vad dagen ska innehålla, t.ex. \"Vila\" eller \"Intervaller inomhus\". Tom sträng = flexibel. null = oförändrad.",
+);
 const ProfileUpdateSchema = z.object({
   summary: z.string().describe("Kort beskrivning på svenska av vad som ändrades i profilen."),
-  goals: z.string().optional().describe("Personens mål – hela den nya texten."),
-  weekly_schedule: z.object(Object.fromEntries(WEEKDAYS.map(([key]) => [key, dayText.optional()])))
-    .optional()
-    .describe("Dagar som ändras i veckoschemat. Dagar som utelämnas behålls."),
-  limitations: z.string().optional().describe("Skador och begränsningar – hela den nya texten."),
-  notes: z.string().optional().describe("Övriga bestående preferenser – hela den nya texten."),
+  goals: z.string().nullable().describe("Personens mål – hela den nya texten, eller null om oförändrat."),
+  weekly_schedule: z.object(Object.fromEntries(WEEKDAYS.map(([key]) => [key, dayText])))
+    .nullable()
+    .describe("Veckoschemat per dag, eller null om schemat inte ändras."),
+  limitations: z.string().nullable().describe("Skador och begränsningar – hela den nya texten, eller null."),
+  notes: z.string().nullable().describe("Övriga bestående preferenser – hela den nya texten, eller null."),
 });
-const { $schema: _ignored2, ...PROFILE_JSON_SCHEMA } = z.toJSONSchema(ProfileUpdateSchema, { target: "draft-7" });
 
 const WorkoutNoteSchema = z.object({
   date: z.string().describe("Datum för passet, YYYY-MM-DD."),
-  time: z.string().optional().describe("Starttid HH:MM, behövs bara om det finns flera pass samma dag."),
+  time: z.string().nullable().describe("Starttid HH:MM om det finns flera pass samma dag, annars null."),
   note: z.string().describe(
     "Vad passet var och hur det kändes enligt personen, kort på svenska, t.ex. \"Intervaller på löpband, " +
       "ansträngning 7/10, tunga ben\". Ersätter en tidigare anteckning – ta med det som fortfarande gäller.",
   ),
 });
-const { $schema: _ignored3, ...WORKOUT_NOTE_JSON_SCHEMA } = z.toJSONSchema(WorkoutNoteSchema, { target: "draft-7" });
+
+const CoachReplySchema = z.object({
+  reply: z.string().describe("Ditt svar i chatten, på svenska."),
+  workout_note: WorkoutNoteSchema.nullable().describe(
+    "Fyll i när personen berättar vad ett genomfört pass var eller hur det kändes, annars null.",
+  ),
+  proposal: ProposalInputSchema.nullable().describe(
+    "Fyll i när kommande pass ska ändras (även när personen ber om det), annars null.",
+  ),
+  profile_update: ProfileUpdateSchema.nullable().describe(
+    "Fyll i när personen berättar något bestående (mål, veckoschema, skada, preferens), annars null.",
+  ),
+});
+type CoachReply = z.infer<typeof CoachReplySchema>;
+const { $schema: _ignored, ...COACH_REPLY_JSON_SCHEMA } = z.toJSONSchema(CoachReplySchema, { target: "draft-7" });
 
 /** Rader som appen lägger in i historiken och som modellen inte ska skriva själv. */
 const APP_NOTE_PATTERN = /^\s*\[(Notis från appen|Föreslagen planändring|Profil uppdaterad|Pass noterat)[^\]]*\]\s*$/gm;
@@ -112,20 +131,20 @@ Så här coachar du:
   ut än planerat: säg det och fråga vad det blev. Nämn bara pass och värden som finns i datan eller
   samtalet; säg aldrig att något hände en dag om det inte står där.
 - När personen berättar vad ett pass var eller hur det kändes (t.ex. "det blev intervaller inomhus",
-  ansträngning, tunga ben): spara det på passet med verktyget log_workout, så att du och veckoplaneringen
-  minns det framöver. Koppla ihop känslan med datan och använd det i bedömningen av kommande pass.
-- Om kommande pass bör ändras (form, sjukdom, schema, önskemål, eller att personen redan flyttat eller
-  bytt ett pass) – använd verktyget propose_plan_change. Ändringen träder i kraft först när personen
-  godkänner den i appen, så beskriv kort i texten vad du föreslår. Skriv aldrig att en ändring är gjord
-  eller godkänd – planen ändras bara via verktyget och personens godkännande. Föreslå bara ändringar när
-  det finns en tydlig anledning.
+  ansträngning, tunga ben): fyll i workout_note, så att du och veckoplaneringen minns det framöver.
+  Koppla ihop känslan med datan och använd det i bedömningen av kommande pass.
+- Om kommande pass bör ändras (form, sjukdom, schema, önskemål, eller att personen ber om det): fyll i
+  proposal med hela den nya passlistan från idag till planens slut. Ändringen träder i kraft först när
+  personen godkänner den i appen, så skriv i reply att du föreslår ändringen och att den behöver
+  godkännas. Skriv aldrig att en ändring är gjord – och lova aldrig en ändring i reply utan att fylla i
+  proposal. Föreslå bara ändringar när det finns en tydlig anledning.
 - Rader inom hakparentes som börjar med "Notis från appen" är skrivna av appen, inte av dig. Skriv aldrig
   sådana rader själv.
-- Finns ingen aktiv plan kan du inte föreslå ändringar; tipsa då om att skapa en ny veckoplan under
-  fliken Plan.
+- Finns ingen aktiv plan kan du inte föreslå ändringar (proposal ska vara null); tipsa då om att skapa
+  en ny veckoplan under fliken Plan.
 - Personens profil (mål, veckoschema, skador, övrigt) är det som gäller långsiktigt och används även när
   nya veckoplaner skapas. När personen berättar något bestående – nytt veckoschema, mål, skada,
-  preferens – spara det med verktyget update_profile och nämn kort att du uppdaterat profilen. Tillfälliga
+  preferens – fyll i profile_update och nämn kort att du uppdaterat profilen. Tillfälliga
   saker (t.ex. "jag är bortrest i helgen") sparas inte i profilen. Följ veckoschemat när du föreslår pass.
 - Formatregler för pass i förslag: uppvärmning/nedvarvning i minuter, huvuddelen som block med steg
   (distanspass = ett block med iterations=1 och ett work-steg; intervaller = iterations=N med ett
@@ -276,52 +295,33 @@ async function generateReply(
       messages,
       effort: "low",
       maxTokens: MAX_TOKENS,
-      tools: [
-        {
-          name: "log_workout",
-          description: "Spara vad ett genomfört pass faktiskt var och hur det kändes, enligt personen.",
-          parameters: WORKOUT_NOTE_JSON_SCHEMA,
-        },
-        {
-          name: "update_profile",
-          description: "Spara bestående information i personens profil (mål, veckoschema, skador, övrigt). " +
-            "Ange bara de fält som ändras.",
-          parameters: PROFILE_JSON_SCHEMA,
-        },
-        ...(plan?.plan
-          ? [{
-            name: "propose_plan_change",
-            description: `Föreslå ändrade pass i den aktiva planen för perioden ${windowStart} till ${windowEnd}. ` +
-              "Ange hela den nya listan av pass för perioden, även oförändrade pass. " +
-              "Personen måste godkänna förslaget i appen innan det gäller.",
-            parameters: PROPOSAL_JSON_SCHEMA,
-          }]
-          : []),
-      ],
+      responseFormat: { name: "coach_reply", schema: COACH_REPLY_JSON_SCHEMA },
+      timeoutMs: TIMEOUT_MS,
     });
+    const parsed = parseReply(result.content);
 
-    const profileCall = result.toolCalls.find((c) => c.function.name === "update_profile");
-    const profileUpdate = profileCall ? await applyProfileUpdate(supabase, profile, profileCall) : null;
-    const noteCall = result.toolCalls.find((c) => c.function.name === "log_workout");
-    const workoutNote = noteCall ? await applyWorkoutNote(supabase, userId, data.workouts, noteCall) : null;
+    const profileUpdate = parsed.profile_update
+      ? await applyProfileUpdate(supabase, profile, parsed.profile_update)
+      : null;
+    const workoutNote = parsed.workout_note
+      ? await applyWorkoutNote(supabase, userId, data.workouts, parsed.workout_note)
+      : null;
 
     let proposal: Proposal | null = null;
-    const call = result.toolCalls.find((c) => c.function.name === "propose_plan_change");
-    if (call && plan) {
-      const parsed = ProposalInputSchema.safeParse(safeJson(call.function.arguments));
-      if (parsed.success) {
-        proposal = {
-          reason: parsed.data.reason,
-          window_start: windowStart,
-          window_end: windowEnd,
-          workouts: cleanWorkouts(parsed.data.workouts, windowStart, windowEnd),
-        };
-      } else {
-        console.error("invalid proposal", parsed.error.issues.slice(0, 5));
-      }
+    if (parsed.proposal && plan?.plan) {
+      proposal = {
+        reason: parsed.proposal.reason,
+        window_start: windowStart,
+        window_end: windowEnd,
+        workouts: cleanWorkouts(parsed.proposal.workouts, windowStart, windowEnd),
+      };
     }
+    console.log(
+      `coach-svar: anteckning=${workoutNote ? "ja" : "nej"}, förslag=${proposal ? "ja" : "nej"}, ` +
+        `profil=${profileUpdate ? "ja" : "nej"}`,
+    );
 
-    const content = result.content.replace(APP_NOTE_PATTERN, "").trim() || proposal?.reason ||
+    const content = parsed.reply.replace(APP_NOTE_PATTERN, "").trim() || proposal?.reason ||
       profileUpdate?.summary || workoutNote?.summary || "";
     if (!content) throw new Error("AI-coachen svarade inte. Försök igen.");
 
@@ -395,8 +395,8 @@ function buildMessages(
       push(messages, "user", workoutNotice(workoutsById.get(m.workout_id)));
     }
     push(messages, m.role, m.content.replace(APP_NOTE_PATTERN, "").trim());
-    // Vad verktygen gjorde läggs som en notis från appen efter svaret – inte i coachens egen text,
-    // annars härmar modellen formatet i stället för att anropa verktygen.
+    // Vad åtgärderna gjorde läggs som en notis från appen efter svaret – inte i coachens egen text,
+    // annars härmar modellen formatet i stället för att fylla i fälten.
     const notes: string[] = [];
     if (m.proposal) {
       const status = { pending: "inte svarat på", accepted: "godkänt", rejected: "avböjt" }[m.proposal_status ?? "pending"];
@@ -432,35 +432,35 @@ function buildMessages(
   return messages;
 }
 
-/** Sparar coachens profiländring. Veckodagar slås ihop med befintligt schema; tom sträng tar bort dagen. */
+/** Sparar coachens profiländring. null = oförändrat; veckodagar slås ihop med befintligt schema och
+ * tom sträng tar bort dagen. */
 async function applyProfileUpdate(
   supabase: SupabaseClient,
   current: ProfileRow | null,
-  call: ToolCall,
+  update: NonNullable<CoachReply["profile_update"]>,
 ): Promise<{ summary: string; fields: string[] } | null> {
-  const parsed = ProfileUpdateSchema.safeParse(safeJson(call.function.arguments));
-  if (!parsed.success) {
-    console.error("invalid profile update", parsed.error.issues.slice(0, 5));
-    return null;
-  }
-  const update = parsed.data;
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   const fields: string[] = [];
   for (const key of ["goals", "limitations", "notes"] as const) {
-    if (update[key] !== undefined) {
-      patch[key] = update[key]?.trim() || null;
+    const value = update[key];
+    if (value !== null) {
+      patch[key] = value.trim() || null;
       fields.push(key);
     }
   }
   if (update.weekly_schedule) {
     const merged: Record<string, string> = { ...(current?.weekly_schedule ?? {}) };
+    let changed = false;
     for (const [day, text] of Object.entries(update.weekly_schedule)) {
-      if (text === undefined) continue;
+      if (text === null) continue;
+      changed = true;
       if (text.trim()) merged[day] = text.trim();
       else delete merged[day];
     }
-    patch.weekly_schedule = merged;
-    fields.push("weekly_schedule");
+    if (changed) {
+      patch.weekly_schedule = merged;
+      fields.push("weekly_schedule");
+    }
   }
   if (!fields.length) return null;
 
@@ -477,14 +477,10 @@ async function applyWorkoutNote(
   supabase: SupabaseClient,
   userId: string,
   workouts: WorkoutRow[],
-  call: ToolCall,
+  input: NonNullable<CoachReply["workout_note"]>,
 ): Promise<{ summary: string } | null> {
-  const parsed = WorkoutNoteSchema.safeParse(safeJson(call.function.arguments));
-  if (!parsed.success || !parsed.data.note.trim()) {
-    console.error("invalid workout note", parsed.success ? "empty note" : parsed.error.issues.slice(0, 5));
-    return null;
-  }
-  const { date, time, note } = parsed.data;
+  const { date, time, note } = input;
+  if (!note.trim()) return null;
   const sameDay = workouts.filter((w) => dayKey(w.started_at) === date);
   const workout = sameDay.find((w) => time && clockTime(w.started_at) === time) ?? sameDay[sameDay.length - 1];
   if (!workout) {
@@ -520,10 +516,29 @@ function push(messages: ChatMessage[], role: "user" | "assistant", content: stri
   }
 }
 
-function safeJson(text: string): unknown {
+/** Tolkar coachens JSON-svar. Validerar åtgärderna var för sig, så att ett felaktigt planförslag inte
+ * gör att själva svaret går förlorat. */
+function parseReply(text: string): CoachReply {
+  let raw: unknown;
   try {
-    return JSON.parse(text);
+    raw = JSON.parse(text);
   } catch {
-    return null;
+    // Ingen JSON (t.ex. en leverantör som ignorerade formatet) – använd texten som svar.
+    if (!text.trim()) throw new AIError("AI-coachen svarade inte. Försök igen.");
+    console.error("coach reply was not JSON");
+    return { reply: text, workout_note: null, proposal: null, profile_update: null };
   }
+  const obj = (raw ?? {}) as Record<string, unknown>;
+  const field = <T>(schema: z.ZodType<T>, value: unknown, name: string): T | null => {
+    if (value === null || value === undefined) return null;
+    const result = schema.safeParse(value);
+    if (!result.success) console.error(`invalid ${name}`, result.error.issues.slice(0, 5));
+    return result.success ? result.data : null;
+  };
+  return {
+    reply: typeof obj.reply === "string" ? obj.reply : "",
+    workout_note: field(WorkoutNoteSchema, obj.workout_note, "workout_note"),
+    proposal: field(ProposalInputSchema, obj.proposal, "proposal"),
+    profile_update: field(ProfileUpdateSchema, obj.profile_update, "profile_update"),
+  };
 }
