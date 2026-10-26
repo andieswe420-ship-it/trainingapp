@@ -157,7 +157,13 @@ async function generate(
 
     const { error } = await supabase
       .from("trend_insights")
-      .update({ status: "ready", content: parsed.data, model: result.model, updated_at: new Date().toISOString() })
+      .update({
+        status: "ready",
+        content: parsed.data,
+        model: result.model,
+        co2_grams: result.co2Grams,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", insightId)
       .eq("user_id", userId);
     if (error) throw new Error(`Kunde inte spara analysen: ${error.message}`);

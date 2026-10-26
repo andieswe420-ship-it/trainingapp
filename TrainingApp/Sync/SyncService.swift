@@ -225,6 +225,20 @@ extension SyncService {
     }
 }
 
+// MARK: - AI-användning
+
+extension SyncService {
+    /// Färdiga AI-svar sedan `since`, med koldioxidutsläpp där leverantören mäter det.
+    func fetchAIUsage(since: Date) async throws -> [AIUsage] {
+        guard let client else { throw SyncError.notConfigured }
+        return try await client.from("ai_usage")
+            .select()
+            .gte("created_at", value: since.ISO8601Format())
+            .execute()
+            .value
+    }
+}
+
 // MARK: - Profil
 
 extension SyncService {

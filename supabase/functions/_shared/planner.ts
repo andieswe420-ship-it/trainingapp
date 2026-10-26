@@ -78,7 +78,7 @@ export async function generatePlan(
     ]);
     const today = dayKey(new Date());
     const summary = `# Personens profil\n${describeProfile(profile)}\n\n# Data\n${buildSummary(data, today)}`;
-    const { plan, model } = await askModel(summary, startDate, endDate, notes);
+    const { plan, model, co2Grams } = await askModel(summary, startDate, endDate, notes);
 
     const { error } = await supabase
       .from("training_plans")
@@ -86,6 +86,7 @@ export async function generatePlan(
         status: "ready",
         plan: { ...plan, workouts: cleanWorkouts(plan.workouts, startDate, endDate) },
         model,
+        co2_grams: co2Grams,
         updated_at: new Date().toISOString(),
       })
       .eq("id", planId)
@@ -106,7 +107,7 @@ async function askModel(
   startDate: string,
   endDate: string,
   notes: string,
-): Promise<{ plan: Plan; model: string }> {
+): Promise<{ plan: Plan; model: string; co2Grams: number | null }> {
   const userContent = [
     `Planera träningen ${startDate} till ${endDate}.`,
     notes ? `\nPersonens önskemål för just den här perioden:\n${notes}` : "",
@@ -138,5 +139,5 @@ async function askModel(
     console.error("plan schema mismatch", parsed.error.issues.slice(0, 5));
     throw new AIError("AI-coachens plan hade fel format. Försök igen.");
   }
-  return { plan: parsed.data, model: result.model };
+  return { plan: parsed.data, model: result.model, co2Grams: result.co2Grams };
 }

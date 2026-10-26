@@ -331,6 +331,7 @@ async function generateReply(
         status: "done",
         content,
         model: result.model,
+        co2_grams: result.co2Grams,
         proposal,
         proposal_status: proposal ? "pending" : null,
         plan_id: proposal ? plan!.id : null,

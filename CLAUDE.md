@@ -61,7 +61,9 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    (`berget/...`). `reasoning_effort` skickas till Berget – planer och trendanalys kör `low` (Kimi med fullt
    resonemang tar >100 s för en veckoplan, mot Edge Functions tidsgräns 150 s; med `low` ~30 s). Planer och
    analyser avbryts efter 120 s och markeras `failed` så att raden inte blir hängande. Berget returnerar
-   CO₂ per anrop i `usage.co2_grams`.
+   CO₂ per anrop i `usage.co2_grams` – det sparas i `co2_grams` på `coach_messages`, `training_plans` och
+   `trend_insights` och summeras via vyn `ai_usage` (security_invoker) i kortet "AI-användningens
+   klimatavtryck" i Trender (`AIUsage`, `SyncService.fetchAIUsage`).
    **Coachens minne:** `log_workout` sparar vad ett pass faktiskt var (`workouts.athlete_note`, visas i
    chatten via `coach_messages.workout_note`) och följer med i all kontext. Verktygsresultat läggs i
    historiken som "Notis från appen" – aldrig i coachens text, annars härmar modellen formatet.

@@ -9,6 +9,8 @@ struct TrendsView: View {
     @Environment(CoachStore.self) private var coach
 
     @AppStorage("trendPeriod") private var periodRaw = TrendPeriod.threeMonths.rawValue
+    @State private var aiUsage: [AIUsage]?
+    @State private var aiUsageFailed = false
 
     private var period: TrendPeriod { TrendPeriod(rawValue: periodRaw) ?? .threeMonths }
     private var insight: TrendInsight.Content? { insights.insights[period]?.content }
@@ -39,10 +41,14 @@ struct TrendsView: View {
                             restingHeartRateCard
                             hrvCard
                             sleepCard
+                            if sync.isSignedIn { aiUsageCard }
                         }
                         .padding()
                     }
-                    .refreshable { await health.refresh() }
+                    .refreshable {
+                        await health.refresh()
+                        await loadAIUsage()
+                    }
                 }
             }
             .navigationTitle("Trender")
@@ -50,6 +56,20 @@ struct TrendsView: View {
         .task(id: TaskKey(period: period, loaded: health.state == .loaded, user: sync.userEmail)) {
             guard health.state == .loaded else { return }
             await insights.load(period, snapshot: TrendSnapshot.make(period: period, health: health))
+        }
+        .task(id: sync.userEmail) { await loadAIUsage() }
+    }
+
+    private static let aiUsageDays = 30
+
+    private func loadAIUsage() async {
+        guard sync.isSignedIn,
+              let since = Calendar.current.date(byAdding: .day, value: -Self.aiUsageDays, to: .now) else { return }
+        do {
+            aiUsage = try await sync.fetchAIUsage(since: since)
+            aiUsageFailed = false
+        } catch {
+            aiUsageFailed = aiUsage == nil
         }
     }
 
@@ -131,6 +151,55 @@ struct TrendsView: View {
                 ComparisonTile(title: "Träningstid", value: "\(Int(snapshot.minutes / 60)) h", current: snapshot.minutes, previous: snapshot.previousMinutes)
                 ComparisonTile(title: "Pass", value: "\(snapshot.sessions)", current: Double(snapshot.sessions), previous: Double(snapshot.previousSessions))
                 ComparisonTile(title: "Distans", value: "\(Int(snapshot.km.rounded())) km", current: snapshot.km, previous: snapshot.previousKm)
+            }
+        }
+        .cardStyle()
+    }
+
+    // MARK: - AI-användning
+
+    private var aiUsageCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("AI-användningens klimatavtryck", systemImage: "leaf")
+                .font(.headline)
+            if let usage = aiUsage, usage.isEmpty {
+                Text("Inga AI-svar de senaste \(Self.aiUsageDays) dagarna.")
+                    .foregroundStyle(.secondary)
+            } else if let usage = aiUsage {
+                let measured = usage.measuredCount
+                HStack(alignment: .firstTextBaseline) {
+                    Text(measured > 0 ? formatCO2(usage.totalCO2) : "–")
+                        .font(.title2.weight(.semibold).monospacedDigit())
+                    Text("CO₂ senaste \(Self.aiUsageDays) dagarna")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(AIUsage.Kind.allCases, id: \.self) { kind in
+                    let rows = usage.filter { $0.kind == kind }
+                    if !rows.isEmpty {
+                        HStack {
+                            Text(kind.label)
+                            Spacer()
+                            Text("\(rows.count) svar")
+                                .foregroundStyle(.secondary)
+                            Text(rows.measuredCount > 0 ? formatCO2(rows.totalCO2) : "–")
+                                .monospacedDigit()
+                                .frame(minWidth: 64, alignment: .trailing)
+                        }
+                        .font(.subheadline)
+                    }
+                }
+                Text(
+                    measured == usage.count
+                        ? "Mätt av Berget AI för varje anrop."
+                        : "Mätt av Berget AI för \(measured) av \(usage.count) svar. Övriga gick via en tjänst utan mätning eller skapades innan mätningen började."
+                )
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            } else if aiUsageFailed {
+                Text("Kunde inte hämta AI-användningen.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView()
             }
         }
         .cardStyle()

@@ -52,6 +52,8 @@ export interface ChatResult {
   content: string;
   toolCalls: ToolCall[];
   model: string;
+  /** Koldioxidutsläpp för anropet enligt Berget AI; null för leverantörer som inte mäter det. */
+  co2Grams: number | null;
 }
 
 interface ChatCompletion {
@@ -61,6 +63,7 @@ interface ChatCompletion {
     message?: { content?: string | null; tool_calls?: ToolCall[] };
   }[];
   error?: { code?: number | string; message?: string };
+  usage?: { co2_grams?: number };
 }
 
 function provider(): Provider {
@@ -183,6 +186,7 @@ async function send(
     content: stripThinking(choice?.message?.content ?? ""),
     toolCalls,
     model: result.model ?? fallbackModel,
+    co2Grams: typeof result.usage?.co2_grams === "number" ? result.usage.co2_grams : null,
   };
 }
 
