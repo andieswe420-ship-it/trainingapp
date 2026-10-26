@@ -11,6 +11,7 @@ struct TrainingApp: App {
     @State private var planStore: PlanStore
     @State private var coachStore: CoachStore
     @State private var insightStore: InsightStore
+    @State private var watchScheduler = WatchScheduler()
     @State private var router = AppRouter.shared
 
     init() {
@@ -61,7 +62,12 @@ struct TrainingApp: App {
             .environment(planStore)
             .environment(coachStore)
             .environment(insightStore)
+            .environment(watchScheduler)
             .task { await sync.observeAuthChanges() }
+            // Ny plan eller godkänd ändring från coachen: lägg passen på klockan.
+            .onChange(of: planStore.plan) { _, plan in
+                Task { await watchScheduler.syncIfNeeded(plan) }
+            }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task { await refreshOnActivate() }
@@ -76,5 +82,6 @@ struct TrainingApp: App {
         await sync.sync(workouts: healthStore.workouts, samples: healthStore.samples, daily: healthStore.dailyMetrics)
         await coachStore.refresh()
         await planStore.loadLatest()
+        await watchScheduler.syncIfNeeded(planStore.plan)
     }
 }

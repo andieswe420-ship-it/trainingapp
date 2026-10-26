@@ -82,10 +82,16 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    Deploy: `supabase functions deploy plan-week coach` och
    `supabase functions deploy weekly-plans --no-verify-jwt` (eller Supabase MCP – ange då
    `import_map_path: deno.json` och skicka med `_shared`-filerna som `../_shared/<fil>`).
-4. **WorkoutKit** – (fas 4) appen hämtar planen och översätter den till
-   `CustomWorkout`/`WorkoutPlan` och schemalägger med `WorkoutScheduler`.
-   Användaren har en färdig `WorkoutScheduling.swift` som ska in i `TrainingApp/Scheduling/`.
-   `WorkoutKitAuthorization` finns redan där och kan slås ihop med den filen.
+4. **WorkoutKit** – `TrainingApp/Scheduling/WorkoutScheduling.swift`. `WorkoutPlanBuilder` översätter
+   ett `PlannedWorkout` till `CustomWorkout` (uppvärmning/nedvarvning → `WorkoutStep`, block →
+   `IntervalBlock`, steg → `IntervalStep` med mål och larm: pulszon, pulsintervall, tempo som fart).
+   Mål/larm som klockan inte stöder för aktiviteten tas bort (`supportsGoal`/`supportsAlert`);
+   aktiviteter utan stöd för egna pass läggs in som `SingleGoalWorkout` med tidsmål.
+   `WatchScheduler` tar bort appens schemalagda pass och lägger in planens pass från idag
+   (kl. 08:00, idag om några minuter), max `maxAllowedScheduledWorkoutCount`. Knapp i Plan-fliken;
+   med "Uppdatera klockan automatiskt" (standard på) synkas klockan när planen ändras
+   (`onChange` i `TrainingApp`) och när appen blir aktiv – bara om behörigheten redan finns.
+   Ett fingeravtryck (plan-id, datum, kommande pass) i UserDefaults förhindrar onödiga omläggningar.
 5. **Apple Watch** – schemalagda pass synkas automatiskt till Träning-appen på klockan.
    Ingen egen watchOS-target behövs.
 
@@ -103,7 +109,7 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 - [x] **Fas 3e** – Utökade trender: periodval och jämförelse, normalintervall (band),
       form/belastning (TRIMP, kondition/trötthet/form, belastningskvot), aerob effektivitet
       (meter per hjärtslag), AI-analys och "Fråga coachen". 180 dagars historik från HealthKit.
-- [ ] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
+- [x] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
 
 ## Projektstruktur
 
@@ -121,7 +127,7 @@ TrainingApp/
   Planning/                 PlanStore, CoachStore, InsightStore (beställ/skicka, polla tills klart)
   Sync/                     SyncService (Supabase-auth + upsert), DTO:er, konfiguration
   Views/                    SwiftUI-vyer
-  Scheduling/               WorkoutKit (behörighet nu, schemaläggning i fas 4)
+  Scheduling/               WorkoutKit (behörighet, översättning av planen, schemaläggning)
   Resources/                Assets.xcassets
 ```
 

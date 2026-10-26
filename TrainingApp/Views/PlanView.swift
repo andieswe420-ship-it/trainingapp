@@ -5,6 +5,7 @@ struct PlanView: View {
     @Environment(HealthKitManager.self) private var health
     @Environment(SyncService.self) private var sync
     @Environment(PlanStore.self) private var store
+    @Environment(WatchScheduler.self) private var watch
 
     @AppStorage("planNotes") private var notes = ""
     @State private var showAccount = false
@@ -48,6 +49,9 @@ struct PlanView: View {
                 statusSection
                 if let plan = store.plan, let content = plan.plan {
                     overviewSection(plan: plan, content: content)
+                    if WatchScheduler.isSupported, plan.status == .ready {
+                        watchSection(plan: plan)
+                    }
                     ForEach(plan.days, id: \.self) { day in
                         daySection(day: day, workouts: content.workouts.filter { $0.date == day })
                     }
@@ -118,6 +122,43 @@ struct PlanView: View {
             Text(content.summary)
         } header: {
             Text(periodTitle(plan))
+        }
+    }
+
+    private func watchSection(plan: TrainingPlan) -> some View {
+        @Bindable var watch = watch
+        return Section {
+            Button {
+                Task { await watch.schedule(plan) }
+            } label: {
+                HStack {
+                    Label(watch.summary == nil ? "Lägg passen på klockan" : "Uppdatera klockan", systemImage: "applewatch")
+                    if watch.isScheduling {
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+            }
+            .disabled(watch.isScheduling)
+            if let summary = watch.summary {
+                Text("\(summary.scheduled) pass på klockan · uppdaterat \(summary.date.formatted(date: .omitted, time: .shortened))")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if !summary.skipped.isEmpty {
+                    Label("Kunde inte läggas på klockan: \(summary.skipped.joined(separator: ", "))", systemImage: "exclamationmark.circle")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                }
+            }
+            if let message = watch.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+            }
+            Toggle("Uppdatera klockan automatiskt", isOn: $watch.autoSync)
+        } header: {
+            Text("Apple Watch")
+        } footer: {
+            Text("Passen från idag och framåt hamnar under Schemalagda i Träning-appen på klockan. Ny plan och ändringar du godkänner hos coachen följer med automatiskt.")
         }
     }
 
