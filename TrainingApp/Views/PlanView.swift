@@ -10,6 +10,7 @@ struct PlanView: View {
     @AppStorage("planNotes") private var notes = ""
     @State private var showAccount = false
     @State private var showProfile = false
+    @State private var runWorkout: PlannedWorkout?
 
     var body: some View {
         NavigationStack {
@@ -27,6 +28,7 @@ struct PlanView: View {
                 }
                 .sheet(isPresented: $showAccount) { AccountView() }
                 .sheet(isPresented: $showProfile) { ProfileView() }
+                .fullScreenCover(item: $runWorkout) { RunView(workout: $0) }
         }
         .task(id: sync.userEmail) {
             if sync.isSignedIn { await store.loadLatest() }
@@ -170,6 +172,13 @@ struct PlanView: View {
             } else {
                 ForEach(workouts) { workout in
                     PlannedWorkoutRow(workout: workout)
+                    if workout.activity == .running || workout.activity == .walking {
+                        Button {
+                            runWorkout = workout
+                        } label: {
+                            Label("Spring med röstcoach", systemImage: "headphones")
+                        }
+                    }
                 }
             }
         }

@@ -54,6 +54,12 @@ targets:
         NSHealthUpdateUsageDescription: >-
           Appen behöver skrivbehörighet till Hälsa för att kunna spara och
           schemalägga träningspass som skickas till din Apple Watch.
+        NSLocationWhenInUseUsageDescription: >-
+          Röstcoachen använder din position under löppasset för att mäta
+          tempo och distans. Positionen sparas inte.
+        UIBackgroundModes:
+          - location
+          - audio
     entitlements:
       path: TrainingApp/TrainingApp.entitlements
       properties:

@@ -94,6 +94,15 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    Ett fingeravtryck (plan-id, datum, kommande pass) i UserDefaults förhindrar onödiga omläggningar.
 5. **Apple Watch** – schemalagda pass synkas automatiskt till Träning-appen på klockan.
    Ingen egen watchOS-target behövs.
+6. **Röstcoach under löpning** – `TrainingApp/Run/`. Personen springer med telefonen: `RunSession`
+   plattar ut planens pass till steg (`RunStep`), håller tiden, mäter tempo/distans med GPS
+   (`RunLocationTracker`, bara utomhus; på löpband blir distanssteg "tryck på Nästa") och talar
+   svenska via `AVSpeechSynthesizer` (`RunVoice`, sänker musiken). Texterna finns i `RunSpeech`:
+   stegstart, halvvägs, 30 s kvar + nästa steg, nedräkning, 100 m kvar, kilometertider och
+   tempokorrigering (en gång i minuten vid tempomål). Puls kan inte läsas live utan klockapp, så
+   pulszoner sägs bara som instruktion. Klockan spelar in passet i Träning-appen – röstcoachen
+   sparar inget eget pass. Bakgrundslägen `location` och `audio` håller appen igång med låst skärm.
+   Start: "Spring med röstcoach" på löp-/promenadpass i Plan-fliken (`RunView`).
 
 ## Faser
 
@@ -110,6 +119,8 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
       form/belastning (TRIMP, kondition/trötthet/form, belastningskvot), aerob effektivitet
       (meter per hjärtslag), AI-analys och "Fråga coachen". 180 dagars historik från HealthKit.
 - [x] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
+- [ ] **Fas 5** – Röstcoach under löpning: steg-/tempocues i telefonen (klar), sedan personliga
+      AI-repliker före passet.
 
 ## Projektstruktur
 
@@ -128,6 +139,7 @@ TrainingApp/
   Sync/                     SyncService (Supabase-auth + upsert), DTO:er, konfiguration
   Views/                    SwiftUI-vyer
   Scheduling/               WorkoutKit (behörighet, översättning av planen, schemaläggning)
+  Run/                      Röstcoach under löpning (RunSession, RunVoice, RunSpeech)
   Resources/                Assets.xcassets
 ```
 
