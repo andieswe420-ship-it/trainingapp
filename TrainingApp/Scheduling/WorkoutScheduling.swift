@@ -62,7 +62,7 @@ final class WatchScheduler {
         defer { isScheduling = false }
 
         guard await WorkoutKitAuthorization.requestIfNeeded() == .authorized else {
-            errorMessage = "Appen får inte lägga pass på klockan. Tillåt det för TrainingApp i appen Inställningar."
+            errorMessage = "Appen får inte lägga pass på klockan. Tillåt det för Runner's High i appen Inställningar."
             return
         }
 

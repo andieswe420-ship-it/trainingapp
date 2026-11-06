@@ -162,7 +162,7 @@ struct PlanView: View {
         } header: {
             Text("Apple Watch")
         } footer: {
-            Text("Passen från idag och framåt hamnar under Schemalagda i Träning-appen på klockan. Ny plan och ändringar du godkänner hos coachen följer med automatiskt.")
+            Text("Passen från idag och framåt hamnar under Schemalagda i Apples Träning-app på klockan. Ny plan och ändringar du godkänner hos coachen följer med automatiskt.")
         }
     }
 

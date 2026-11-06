@@ -1,4 +1,7 @@
-# TrainingApp – personlig träningsapp (iOS 17+, SwiftUI)
+# Runner's High – personlig träningsapp (iOS 17+, SwiftUI)
+
+Visningsnamnet är "Runner's High" (iPhone och klocka); projekt, targets och bundle-id heter
+fortfarande `TrainingApp` – byt inte bundle-id, då försvinner installationen och behörigheterna.
 
 ## Arkitektur (målbild)
 
@@ -109,7 +112,7 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    skickas till klockan; avslutas passet på klockan slutar röstcoachen också. Pulscues: en gång i
    minuten efter första minuten vid pulsmål (zon eller intervall), plus puls i kilometercuen. Zonerna
    uppskattas från högsta uppmätta puls (zon n = 40+10n till 50+10n % av max) – klockans egna zoner
-   går inte att läsa. Klockappen (visningsnamn "Röstcoach", inte "Träning" som Apples app) spelar in
+   går inte att läsa. Klockappen (visningsnamn "Runner's High", inte "Träning" som Apples app) spelar in
    passet – starta inte Apples Träning-app samtidigt.
    Bakgrundslägen `location` och `audio` håller appen igång med låst skärm.
    Start: "Spring med röstcoach" på löp-/promenadpass i Plan-fliken (`RunView`).

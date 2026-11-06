@@ -44,7 +44,7 @@ targets:
     info:
       path: TrainingApp/Info.plist
       properties:
-        CFBundleDisplayName: Träning
+        CFBundleDisplayName: Runner's High
         CFBundleDevelopmentRegion: sv
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
@@ -87,8 +87,8 @@ targets:
     info:
       path: TrainingAppWatch/Info.plist
       properties:
-        # Inte "Träning" – det heter Apples egen träningsapp på klockan.
-        CFBundleDisplayName: Röstcoach
+        # Samma namn som iPhone-appen – inte "Träning", som är Apples egen app på klockan.
+        CFBundleDisplayName: Runner's High
         CFBundleDevelopmentRegion: sv
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.andieswe420.TrainingApp
