@@ -103,7 +103,8 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 6. **Röstcoach under löpning** – `TrainingApp/Run/`. Personen springer med telefonen: `RunSession`
    plattar ut planens pass till steg (`RunStep`), håller tiden, mäter tempo/distans med GPS
    (`RunLocationTracker`, bara utomhus; på löpband blir distanssteg "tryck på Nästa") och talar
-   svenska via `AVSpeechSynthesizer` (`RunVoice`, sänker musiken). Texterna finns i `RunSpeech`:
+   svenska via `AVSpeechSynthesizer` (`RunVoice`, sänker musiken; väljer bästa installerade svenska rösten
+   – Premium > Förbättrad > Standard – eller den som valts i löpskärmen, `runVoiceIdentifier`). Texterna finns i `RunSpeech`:
    stegstart, halvvägs, 30 s kvar + nästa steg, nedräkning, 100 m kvar, kilometertider och
    tempokorrigering (en gång i minuten vid tempomål). **Live-puls:** vid Starta öppnar telefonen
    klockappen (`HKHealthStore.startWatchApp`); `LiveHeartRate` (HealthKit/, sätter

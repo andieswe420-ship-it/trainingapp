@@ -142,6 +142,10 @@ final class RunSession {
         }
     }
 
+    func previewVoice() {
+        voice.preview()
+    }
+
     func start() {
         guard state == .ready, let first = currentStep else { return }
         state = .running
@@ -340,8 +344,35 @@ final class RunSession {
 /// Talar på svenska i hörlurarna och sänker musiken medan rösten hörs.
 @MainActor
 final class RunVoice: NSObject, AVSpeechSynthesizerDelegate {
+    /// Vald röst (identifier) i UserDefaults; tom = bästa installerade svenska rösten.
+    nonisolated static let preferenceKey = "runVoiceIdentifier"
+
     private let synthesizer = AVSpeechSynthesizer()
-    private let voice = AVSpeechSynthesisVoice(language: "sv-SE")
+
+    /// Installerade svenska röster, bästa kvaliteten först. Förbättrade och Premium-röster laddas ner
+    /// under Inställningar → Hjälpmedel → Uppläst innehåll → Röster → Svenska.
+    static var swedishVoices: [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix("sv") }
+            .sorted { $0.quality != $1.quality ? $0.quality.rawValue > $1.quality.rawValue : $0.name < $1.name }
+    }
+
+    static func qualityLabel(_ voice: AVSpeechSynthesisVoice) -> String {
+        switch voice.quality {
+        case .premium: "Premium"
+        case .enhanced: "Förbättrad"
+        default: "Standard"
+        }
+    }
+
+    /// Den valda rösten om den finns kvar, annars den bästa svenska.
+    private var voice: AVSpeechSynthesisVoice? {
+        let identifier = UserDefaults.standard.string(forKey: Self.preferenceKey) ?? ""
+        if !identifier.isEmpty, let chosen = AVSpeechSynthesisVoice(identifier: identifier) {
+            return chosen
+        }
+        return Self.swedishVoices.first ?? AVSpeechSynthesisVoice(language: "sv-SE")
+    }
 
     override init() {
         super.init()
@@ -355,6 +386,12 @@ final class RunVoice: NSObject, AVSpeechSynthesizerDelegate {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
         synthesizer.speak(utterance)
+    }
+
+    /// Provlyssning i löpskärmen innan passet startar.
+    func preview() {
+        synthesizer.stopSpeaking(at: .immediate)
+        say("Hej! Jag är din röstcoach. Intervall 1 av 4, fyra minuter. Tempo 5 och 10 per kilometer.")
     }
 
     func stop() {

@@ -4,6 +4,7 @@ import SwiftUI
 struct RunView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var session: RunSession
+    @AppStorage(RunVoice.preferenceKey) private var voiceIdentifier = ""
 
     init(workout: PlannedWorkout, maxHeartRate: Double?) {
         _session = State(initialValue: RunSession(workout: workout, maxHeartRate: maxHeartRate))
@@ -107,6 +108,7 @@ struct RunView: View {
         switch session.state {
         case .ready:
             VStack(spacing: 12) {
+                voicePicker
                 Text("Runner's High på klockan startar passet automatiskt, skickar pulsen hit och sparar passet i Hälsa – starta inte Apples Träning-app samtidigt. Ta på dig hörlurarna; rösten sänker musiken när den pratar.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -146,6 +148,32 @@ struct RunView: View {
             }
         case .finished:
             EmptyView()
+        }
+    }
+
+    private var voicePicker: some View {
+        VStack(spacing: 6) {
+            HStack {
+                Picker("Röst", selection: $voiceIdentifier) {
+                    Text("Bästa tillgängliga").tag("")
+                    ForEach(RunVoice.swedishVoices, id: \.identifier) { voice in
+                        Text("\(voice.name) (\(RunVoice.qualityLabel(voice)))").tag(voice.identifier)
+                    }
+                }
+                .pickerStyle(.menu)
+                Button {
+                    session.previewVoice()
+                } label: {
+                    Label("Provlyssna", systemImage: "speaker.wave.2")
+                }
+                .buttonStyle(.bordered)
+            }
+            if !RunVoice.swedishVoices.contains(where: { $0.quality != .default }) {
+                Text("Låter rösten robotaktig? Ladda ner en svensk röst med kvaliteten Förbättrad eller Premium under Inställningar → Hjälpmedel → Uppläst innehåll → Röster → Svenska.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
     }
 
