@@ -107,7 +107,7 @@ struct RunView: View {
         switch session.state {
         case .ready:
             VStack(spacing: 12) {
-                Text("Klockappen startar passet automatiskt, skickar pulsen hit och sparar passet i Hälsa – starta inte Träning-appen samtidigt. Ta på dig hörlurarna; rösten sänker musiken när den pratar.")
+                Text("Klockappen Röstcoach startar passet automatiskt, skickar pulsen hit och sparar passet i Hälsa – starta inte Apples Träning-app samtidigt. Ta på dig hörlurarna; rösten sänker musiken när den pratar.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

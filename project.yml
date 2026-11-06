@@ -87,7 +87,8 @@ targets:
     info:
       path: TrainingAppWatch/Info.plist
       properties:
-        CFBundleDisplayName: Träning
+        # Inte "Träning" – det heter Apples egen träningsapp på klockan.
+        CFBundleDisplayName: Röstcoach
         CFBundleDevelopmentRegion: sv
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.andieswe420.TrainingApp

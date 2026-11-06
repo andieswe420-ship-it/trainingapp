@@ -109,7 +109,8 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    skickas till klockan; avslutas passet på klockan slutar röstcoachen också. Pulscues: en gång i
    minuten efter första minuten vid pulsmål (zon eller intervall), plus puls i kilometercuen. Zonerna
    uppskattas från högsta uppmätta puls (zon n = 40+10n till 50+10n % av max) – klockans egna zoner
-   går inte att läsa. Klockappen spelar in passet – starta inte Träning-appen samtidigt.
+   går inte att läsa. Klockappen (visningsnamn "Röstcoach", inte "Träning" som Apples app) spelar in
+   passet – starta inte Apples Träning-app samtidigt.
    Bakgrundslägen `location` och `audio` håller appen igång med låst skärm.
    Start: "Spring med röstcoach" på löp-/promenadpass i Plan-fliken (`RunView`).
 
