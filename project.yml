@@ -113,3 +113,10 @@ schemes:
         TrainingApp: all
     run:
       config: Debug
+  # Kör klockappen direkt på klockan från Xcode (visar fel om installationen inte går).
+  TrainingAppWatch:
+    build:
+      targets:
+        TrainingAppWatch: all
+    run:
+      config: Debug
