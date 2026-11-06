@@ -119,8 +119,10 @@ final class RunSession {
         var lastHeartRateCheck: TimeInterval = 0
     }
 
-    init(workout: PlannedWorkout, maxHeartRate: Double?, liveHeartRate: LiveHeartRate = .shared) {
+    init(workout: PlannedWorkout, maxHeartRate: Double?) {
         self.workout = workout
+        // Hämtas här och inte som standardvärde: standardvärden körs utanför huvudtråden.
+        let liveHeartRate = LiveHeartRate.shared
         self.liveHeartRate = liveHeartRate
         zones = Self.zones(maxHeartRate: maxHeartRate)
         usesGPS = workout.location == .outdoor

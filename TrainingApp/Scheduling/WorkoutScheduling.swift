@@ -4,13 +4,21 @@ import HealthKit
 import Observation
 import WorkoutKit
 
-/// Behörighet för att schemalägga pass till Apple Watch via WorkoutKit.
+/// Behörighet för att schemalägga pass till Apple Watch via WorkoutKit. Svarar med Bool:
+/// `AuthorizationState` är inte Sendable och får inte skickas till huvudtråden.
 enum WorkoutKitAuthorization {
-    static func requestIfNeeded() async -> WorkoutScheduler.AuthorizationState {
+    /// Frågar om behörighet om personen inte svarat än.
+    @discardableResult
+    static func requestIfNeeded() async -> Bool {
         let scheduler = WorkoutScheduler.shared
         let current = await scheduler.authorizationState
-        guard current == .notDetermined else { return current }
-        return await scheduler.requestAuthorization()
+        guard current == .notDetermined else { return current == .authorized }
+        return await scheduler.requestAuthorization() == .authorized
+    }
+
+    /// Frågar aldrig – för automatisk uppdatering i bakgrunden.
+    static func isAuthorized() async -> Bool {
+        await WorkoutScheduler.shared.authorizationState == .authorized
     }
 }
 
@@ -50,7 +58,7 @@ final class WatchScheduler {
     func syncIfNeeded(_ plan: TrainingPlan?) async {
         guard autoSync, Self.isSupported, let plan, plan.status == .ready, let content = plan.plan else { return }
         guard Self.fingerprint(plan: plan, workouts: Self.upcoming(content)) != storedFingerprint else { return }
-        guard await WorkoutScheduler.shared.authorizationState == .authorized else { return }
+        guard await WorkoutKitAuthorization.isAuthorized() else { return }
         await schedule(plan)
     }
 
@@ -61,7 +69,7 @@ final class WatchScheduler {
         errorMessage = nil
         defer { isScheduling = false }
 
-        guard await WorkoutKitAuthorization.requestIfNeeded() == .authorized else {
+        guard await WorkoutKitAuthorization.requestIfNeeded() else {
             errorMessage = "Appen får inte lägga pass på klockan. Tillåt det för Runner's High i appen Inställningar."
             return
         }

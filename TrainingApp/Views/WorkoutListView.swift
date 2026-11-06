@@ -19,7 +19,7 @@ struct WorkoutListView: View {
         }
         .task {
             await health.requestAuthorizationAndLoad()
-            _ = await WorkoutKitAuthorization.requestIfNeeded()
+            await WorkoutKitAuthorization.requestIfNeeded()
             await Notifications.requestAuthorization()
             await syncNow()
             if sync.isSignedIn, let profile = try? await sync.fetchProfile() {
