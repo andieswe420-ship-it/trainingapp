@@ -60,6 +60,7 @@ struct AccountView: View {
                     }
                 }
             }
+            .themedScreen()
             .navigationTitle("Konto")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

@@ -28,9 +28,12 @@ struct CoachView: View {
                         Text("Coachen följer din träning, sömn och återhämtning och hjälper dig justera planen.")
                     } actions: {
                         Button("Logga in") { showAccount = true }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .padding(.horizontal, 40)
                     }
                 }
             }
+            .themedScreen()
             .navigationTitle("Coach")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -100,12 +103,17 @@ struct CoachView: View {
     private var intro: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Hej! Jag följer dina pass, din sömn och din återhämtning. Fråga mig vad du vill om träningen – eller berätta hur senaste passet kändes.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
             ForEach(suggestions, id: \.self) { suggestion in
                 Button(suggestion) {
                     Task { await store.send(suggestion) }
                 }
-                .buttonStyle(.bordered)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.cyan)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Theme.cyan.opacity(0.12)))
+                .overlay(Capsule().strokeBorder(Theme.cyan.opacity(0.35)))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -127,21 +135,23 @@ struct CoachView: View {
                 .lineLimit(1...5)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.border))
             Button {
                 let text = draft
                 draft = ""
                 Task { await store.send(text) }
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 32))
+                    .font(.system(size: 34))
+                    .foregroundStyle(canSend ? Theme.cyan : Color.white.opacity(0.25))
             }
             .disabled(!canSend)
             .accessibilityLabel("Skicka")
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(Theme.backgroundTop.opacity(0.95))
     }
 }
 
@@ -172,18 +182,18 @@ private struct CoachMessageView: View {
                         .multilineTextAlignment(.leading)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.tint)
+                .foregroundStyle(Theme.cyan)
                 .frame(maxWidth: 320, alignment: .leading)
             }
             if let note = message.workoutNote {
                 Label("Passet noterat: \(note.summary)", systemImage: "figure.run")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     .frame(maxWidth: 320, alignment: .leading)
             }
             Text(message.createdAt.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.secondaryText.opacity(0.7))
         }
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
     }
@@ -196,7 +206,7 @@ private struct CoachMessageView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                     Text("Coachen skriver…")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
             case .failed:
                 Label(message.error ?? "Coachen kunde inte svara. Försök igen.", systemImage: "exclamationmark.triangle")
@@ -207,10 +217,14 @@ private struct CoachMessageView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .foregroundStyle(isUser ? Color.white : Color.primary)
+        .foregroundStyle(isUser ? Theme.backgroundTop : Color.white)
         .background(
-            isUser ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color(.secondarySystemBackground)),
-            in: RoundedRectangle(cornerRadius: 18)
+            isUser ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.card),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(isUser ? Color.clear : Theme.border)
         )
         .frame(maxWidth: 320, alignment: isUser ? .trailing : .leading)
     }
@@ -232,6 +246,7 @@ private struct ProposalCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Förslag på ändrad plan", systemImage: "calendar.badge.clock")
                 .font(.headline)
+                .foregroundStyle(Theme.cyan)
             Text(proposal.reason)
                 .font(.callout)
 
@@ -243,7 +258,7 @@ private struct ProposalCard: View {
                     if workouts.isEmpty {
                         Text("Vila")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                     } else {
                         ForEach(workouts) { workout in
                             Label(
@@ -258,26 +273,26 @@ private struct ProposalCard: View {
 
             switch status {
             case .pending:
-                HStack {
+                HStack(spacing: 10) {
                     Button("Godkänn") { onDecide(true) }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(PrimaryButtonStyle())
                     Button("Avböj", role: .cancel) { onDecide(false) }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(SecondaryButtonStyle())
                     if isDeciding { ProgressView() }
                 }
                 .disabled(isDeciding)
             case .accepted:
                 Label("Godkänd – planen är uppdaterad", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Theme.cyan)
             case .rejected:
                 Label("Avböjd", systemImage: "xmark.circle")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             }
         }
         .padding(14)
         .frame(maxWidth: 320, alignment: .leading)
-        .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.accentColor.opacity(0.4)))
+        .background(Theme.cardRaised, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.cyan.opacity(0.4)))
     }
 
     private func dayTitle(_ day: String) -> String {

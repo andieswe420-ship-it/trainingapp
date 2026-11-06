@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Veckoplan från AI-coachen.
+/// Veckoplan från AI-coachen: dagens pass överst, veckan som en rad och varje dag som ett kort.
 struct PlanView: View {
     @Environment(HealthKitManager.self) private var health
     @Environment(SyncService.self) private var sync
@@ -12,9 +12,12 @@ struct PlanView: View {
     @State private var showProfile = false
     @State private var runWorkout: PlannedWorkout?
 
+    private var today: String { PlanDate.string(from: .now) }
+
     var body: some View {
         NavigationStack {
             content
+                .themedScreen()
                 .navigationTitle("Veckoplan")
                 .toolbar {
                     if sync.isSignedIn {
@@ -46,149 +49,289 @@ struct PlanView: View {
                 Text("AI-coachen bygger veckoplanen utifrån dina synkade pass och din återhämtning.")
             } actions: {
                 Button("Logga in") { showAccount = true }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(.horizontal, 40)
             }
         } else {
-            List {
-                requestSection
-                statusSection
-                if let plan = store.plan, let content = plan.plan {
-                    overviewSection(plan: plan, content: content)
-                    if WatchScheduler.isSupported, plan.status == .ready {
-                        watchSection(plan: plan)
+            ScrollView {
+                VStack(spacing: 20) {
+                    status
+                    if let plan = store.plan, let content = plan.plan {
+                        weekStrip(plan: plan, content: content)
+                        todayCard(plan: plan, content: content)
+                        overviewCard(plan: plan, content: content)
+                        upcomingDays(plan: plan, content: content)
+                        if !content.restDayNotes.isEmpty {
+                            VStack(spacing: 8) {
+                                SectionTitle("Vilodagar")
+                                Text(content.restDayNotes)
+                                    .font(.callout)
+                                    .card()
+                            }
+                        }
+                        if WatchScheduler.isSupported, plan.status == .ready {
+                            watchCard(plan: plan)
+                        }
                     }
-                    ForEach(plan.days, id: \.self) { day in
-                        daySection(day: day, workouts: content.workouts.filter { $0.date == day })
-                    }
-                    Section("Vilodagar") {
-                        Text(content.restDayNotes)
-                    }
+                    requestCard
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
             .refreshable { await store.loadLatest() }
         }
     }
 
-    private var requestSection: some View {
-        Section {
-            TextField("Önskemål för just den här veckan", text: $notes, axis: .vertical)
-                .lineLimit(2...5)
-            Button {
-                Task {
-                    await store.generate(
-                        notes: notes,
-                        workouts: health.workouts,
-                        samples: health.samples,
-                        daily: health.dailyMetrics
+    // MARK: - Veckan
+
+    /// M T O T F L S med en prick per dag: färgad efter intensitet, tom för vila, ring runt idag.
+    private func weekStrip(plan: TrainingPlan, content: PlanContent) -> some View {
+        HStack(spacing: 0) {
+            ForEach(plan.days, id: \.self) { day in
+                let workouts = content.workouts.filter { $0.date == day }
+                let isToday = day == today
+                VStack(spacing: 8) {
+                    Text(weekdayLetter(day))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isToday ? Theme.cyan : Theme.secondaryText)
+                    ZStack {
+                        Circle()
+                            .fill(workouts.isEmpty ? Color.white.opacity(0.08) : dayColor(workouts).opacity(0.9))
+                            .frame(width: 30, height: 30)
+                        if let first = workouts.first {
+                            Image(systemName: first.activity.symbolName)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Theme.backgroundTop)
+                        }
+                    }
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Theme.cyan, lineWidth: isToday ? 2 : 0)
+                            .frame(width: 38, height: 38)
                     )
+                    Text(dayNumber(day))
+                        .font(.caption2)
+                        .foregroundStyle(day < today ? Theme.secondaryText.opacity(0.6) : Theme.secondaryText)
                 }
-            } label: {
-                Label(store.plan == nil ? "Skapa veckoplan" : "Skapa ny veckoplan", systemImage: "sparkles")
+                .frame(maxWidth: .infinity)
+                .opacity(day < today ? 0.55 : 1)
             }
-            .disabled(store.isPlanning || health.state != .loaded)
-        } footer: {
-            Text("Planen gäller sju dagar från idag och följer veckoschemat i din profil. Dina senaste pass synkas först.")
         }
+        .padding(.vertical, 14)
+        .card()
     }
+
+    // MARK: - Idag
 
     @ViewBuilder
-    private var statusSection: some View {
-        if store.isPlanning {
-            Section {
-                HStack(spacing: 12) {
-                    ProgressView()
-                    Text("AI-coachen planerar din vecka… Det brukar ta någon minut.")
-                }
-            }
-        }
-        if let message = store.errorMessage {
-            Section {
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-            }
-        }
-        if let plan = store.plan, plan.status == .failed {
-            Section {
-                Label("Planeringen misslyckades: \(plan.error ?? "okänt fel")", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-            }
-        }
-    }
-
-    private func overviewSection(plan: TrainingPlan, content: PlanContent) -> some View {
-        Section {
-            Label(content.readiness.label, systemImage: content.readiness.symbolName)
-                .font(.headline)
-            Text(content.readinessExplanation)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Text(content.weeklyFocus)
-                .font(.subheadline.weight(.semibold))
-            Text(content.summary)
-        } header: {
-            Text(periodTitle(plan))
-        }
-    }
-
-    private func watchSection(plan: TrainingPlan) -> some View {
-        @Bindable var watch = watch
-        return Section {
-            Button {
-                Task { await watch.schedule(plan) }
-            } label: {
-                HStack {
-                    Label(watch.summary == nil ? "Lägg passen på klockan" : "Uppdatera klockan", systemImage: "applewatch")
-                    if watch.isScheduling {
-                        Spacer()
-                        ProgressView()
-                    }
-                }
-            }
-            .disabled(watch.isScheduling)
-            if let summary = watch.summary {
-                Text("\(summary.scheduled) pass på klockan · uppdaterat \(summary.date.formatted(date: .omitted, time: .shortened))")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                if !summary.skipped.isEmpty {
-                    Label("Kunde inte läggas på klockan: \(summary.skipped.joined(separator: ", "))", systemImage: "exclamationmark.circle")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                }
-            }
-            if let message = watch.errorMessage {
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-            }
-            Toggle("Uppdatera klockan automatiskt", isOn: $watch.autoSync)
-        } header: {
-            Text("Apple Watch")
-        } footer: {
-            Text("Passen från idag och framåt hamnar under Schemalagda i Apples Träning-app på klockan. Ny plan och ändringar du godkänner hos coachen följer med automatiskt.")
-        }
-    }
-
-    private func daySection(day: String, workouts: [PlannedWorkout]) -> some View {
-        Section(dayTitle(day)) {
-            if workouts.isEmpty {
-                Label("Vila", systemImage: "bed.double")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(workouts) { workout in
-                    PlannedWorkoutRow(workout: workout)
-                    if workout.activity == .running || workout.activity == .walking {
-                        Button {
-                            runWorkout = workout
-                        } label: {
-                            Label("Spring med röstcoach", systemImage: "headphones")
+    private func todayCard(plan: TrainingPlan, content: PlanContent) -> some View {
+        let workouts = content.workouts.filter { $0.date == today }
+        if plan.days.contains(today) {
+            VStack(spacing: 8) {
+                SectionTitle("Idag")
+                VStack(alignment: .leading, spacing: 16) {
+                    if workouts.isEmpty {
+                        Label("Vilodag – låt kroppen bygga upp sig.", systemImage: "bed.double.fill")
+                            .font(.headline)
+                            .foregroundStyle(Theme.cyan)
+                    } else {
+                        ForEach(workouts) { workout in
+                            PlannedWorkoutRow(workout: workout)
+                            if workout.activity == .running || workout.activity == .walking {
+                                Button {
+                                    runWorkout = workout
+                                } label: {
+                                    Label("Spring med röstcoach", systemImage: "headphones")
+                                }
+                                .buttonStyle(PrimaryButtonStyle())
+                            }
                         }
                     }
                 }
+                .card(raised: true)
             }
         }
+    }
+
+    // MARK: - Översikt
+
+    private func overviewCard(plan: TrainingPlan, content: PlanContent) -> some View {
+        VStack(spacing: 8) {
+            SectionTitle("Veckan · \(periodTitle(plan))")
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: content.readiness.symbolName)
+                        .font(.title3)
+                        .foregroundStyle(Theme.cyan)
+                    Text(content.readiness.label)
+                        .font(.title3.weight(.bold))
+                }
+                Text(content.weeklyFocus)
+                    .font(.headline)
+                Text(content.readinessExplanation)
+                    .font(.callout)
+                    .foregroundStyle(Theme.secondaryText)
+                Text(content.summary)
+                    .font(.callout)
+            }
+            .card()
+        }
+    }
+
+    // MARK: - Kommande dagar
+
+    private func upcomingDays(plan: TrainingPlan, content: PlanContent) -> some View {
+        let days = plan.days.filter { $0 > today }
+        return VStack(spacing: 8) {
+            if !days.isEmpty { SectionTitle("Kommande") }
+            ForEach(days, id: \.self) { day in
+                let workouts = content.workouts.filter { $0.date == day }
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(dayTitle(day))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.secondaryText)
+                    if workouts.isEmpty {
+                        Label("Vila", systemImage: "bed.double")
+                            .foregroundStyle(Theme.secondaryText)
+                    } else {
+                        ForEach(workouts) { workout in
+                            PlannedWorkoutRow(workout: workout)
+                            if workout.activity == .running || workout.activity == .walking {
+                                Button {
+                                    runWorkout = workout
+                                } label: {
+                                    Label("Spring med röstcoach", systemImage: "headphones")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .tint(Theme.cyan)
+                            }
+                        }
+                    }
+                }
+                .card()
+            }
+        }
+    }
+
+    // MARK: - Klockan
+
+    private func watchCard(plan: TrainingPlan) -> some View {
+        @Bindable var watch = watch
+        return VStack(spacing: 8) {
+            SectionTitle("Apple Watch")
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    Task { await watch.schedule(plan) }
+                } label: {
+                    HStack {
+                        Label(watch.summary == nil ? "Lägg passen på klockan" : "Uppdatera klockan", systemImage: "applewatch")
+                        if watch.isScheduling { ProgressView() }
+                    }
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .disabled(watch.isScheduling)
+                if let summary = watch.summary {
+                    Text("\(summary.scheduled) pass på klockan · uppdaterat \(summary.date.formatted(date: .omitted, time: .shortened))")
+                        .font(.callout)
+                        .foregroundStyle(Theme.secondaryText)
+                    if !summary.skipped.isEmpty {
+                        Label("Kunde inte läggas på klockan: \(summary.skipped.joined(separator: ", "))", systemImage: "exclamationmark.circle")
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                if let message = watch.errorMessage {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                }
+                Toggle("Uppdatera klockan automatiskt", isOn: $watch.autoSync)
+                    .tint(Theme.cyan)
+                Text("Passen från idag och framåt hamnar under Schemalagda i Apples Träning-app på klockan. Ny plan och ändringar du godkänner hos coachen följer med automatiskt.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondaryText)
+            }
+            .card()
+        }
+    }
+
+    // MARK: - Ny plan
+
+    private var requestCard: some View {
+        VStack(spacing: 8) {
+            SectionTitle(store.plan == nil ? "Kom igång" : "Ny plan")
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Önskemål för just den här veckan", text: $notes, axis: .vertical)
+                    .lineLimit(2...5)
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.06)))
+                Button {
+                    Task {
+                        await store.generate(
+                            notes: notes,
+                            workouts: health.workouts,
+                            samples: health.samples,
+                            daily: health.dailyMetrics
+                        )
+                    }
+                } label: {
+                    Label(store.plan == nil ? "Skapa veckoplan" : "Skapa ny veckoplan", systemImage: "sparkles")
+                }
+                .buttonStyle(store.plan == nil ? AnyButtonStyle(PrimaryButtonStyle()) : AnyButtonStyle(SecondaryButtonStyle()))
+                .disabled(store.isPlanning || health.state != .loaded)
+                Text("Planen gäller sju dagar från idag och följer veckoschemat i din profil. Dina senaste pass synkas först.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondaryText)
+            }
+            .card()
+        }
+    }
+
+    // MARK: - Status
+
+    @ViewBuilder
+    private var status: some View {
+        if store.isPlanning {
+            HStack(spacing: 12) {
+                ProgressView()
+                Text("AI-coachen planerar din vecka… Det brukar ta någon minut.")
+                    .font(.callout)
+            }
+            .card(raised: true)
+        }
+        if let message = store.errorMessage {
+            Label(message, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+                .card()
+        }
+        if let plan = store.plan, plan.status == .failed {
+            Label("Planeringen misslyckades: \(plan.error ?? "okänt fel")", systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+                .card()
+        }
+    }
+
+    // MARK: - Hjälpfunktioner
+
+    /// Hårdaste passet bestämmer dagens färg.
+    private func dayColor(_ workouts: [PlannedWorkout]) -> Color {
+        if workouts.contains(where: { $0.intensity == .hard }) { return Theme.hot }
+        if workouts.contains(where: { $0.intensity == .moderate }) { return Theme.blue }
+        return Theme.cyan
+    }
+
+    private func weekdayLetter(_ day: String) -> String {
+        guard let date = PlanDate.date(from: day) else { return "" }
+        return date.formatted(.dateTime.weekday(.narrow)).uppercased()
+    }
+
+    private func dayNumber(_ day: String) -> String {
+        guard let date = PlanDate.date(from: day) else { return "" }
+        return date.formatted(.dateTime.day())
     }
 
     private func dayTitle(_ day: String) -> String {
         guard let date = PlanDate.date(from: day) else { return day }
-        return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
+        return date.formatted(.dateTime.weekday(.wide).day().month(.wide)).capitalized
     }
 
     private func periodTitle(_ plan: TrainingPlan) -> String {
@@ -197,5 +340,18 @@ struct PlanView: View {
         }
         let style = Date.FormatStyle.dateTime.day().month(.abbreviated)
         return "\(start.formatted(style)) – \(end.formatted(style))"
+    }
+}
+
+/// Typraderad knappstil, så att stilen kan väljas med ett villkor.
+struct AnyButtonStyle: ButtonStyle {
+    private let make: (Configuration) -> AnyView
+
+    init<S: ButtonStyle>(_ style: S) {
+        make = { AnyView(style.makeBody(configuration: $0)) }
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        make(configuration)
     }
 }

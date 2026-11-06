@@ -47,16 +47,20 @@ struct TrainingApp: App {
         WindowGroup {
             TabView(selection: $router.selectedTab) {
                 WorkoutListView()
+                    .themedTabBar()
                     .tabItem { Label("Pass", systemImage: "list.bullet") }
                     .tag(AppTab.workouts)
                 PlanView()
+                    .themedTabBar()
                     .tabItem { Label("Plan", systemImage: "calendar") }
                     .tag(AppTab.plan)
                 CoachView()
+                    .themedTabBar()
                     .tabItem { Label("Coach", systemImage: "bubble.left.and.bubble.right") }
                     .badge(coachStore.unreadCount)
                     .tag(AppTab.coach)
                 TrendsView()
+                    .themedTabBar()
                     .tabItem { Label("Trender", systemImage: "chart.xyaxis.line") }
                     .tag(AppTab.trends)
             }
@@ -66,6 +70,9 @@ struct TrainingApp: App {
             .environment(coachStore)
             .environment(insightStore)
             .environment(watchScheduler)
+            // Alltid mörk och sportig – färgerna kommer från ikonen (Theme).
+            .preferredColorScheme(.dark)
+            .tint(Theme.cyan)
             .task { await sync.observeAuthChanges() }
             // Ny plan eller godkänd ändring från coachen: lägg passen på klockan.
             .onChange(of: planStore.plan) { _, plan in

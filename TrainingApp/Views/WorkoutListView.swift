@@ -9,7 +9,8 @@ struct WorkoutListView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Träning")
+                .themedScreen()
+                .navigationTitle("Pass")
                 .refreshable {
                     await health.refresh()
                     await syncNow()
@@ -109,12 +110,13 @@ struct WorkoutListView: View {
             Section("Återhämtning & kondition") {
                 MetricsRow(metrics: health.metrics)
             }
+            .themedRow()
 
             Section {
                 if health.workouts.isEmpty {
                     Text("Inga träningspass hittades. Kontrollera att appen har läsbehörighet i Hälsa → Delning → Appar.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 } else {
                     ForEach(health.workouts) { workout in
                         WorkoutRow(workout: workout)
@@ -125,6 +127,7 @@ struct WorkoutListView: View {
             } footer: {
                 Text(syncStatusText)
             }
+            .themedRow()
         }
     }
 }

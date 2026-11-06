@@ -51,6 +51,7 @@ struct TrendsView: View {
                     }
                 }
             }
+            .themedScreen()
             .navigationTitle("Trender")
         }
         .task(id: TaskKey(period: period, loaded: health.state == .loaded, user: sync.userEmail)) {
@@ -219,7 +220,7 @@ struct TrendsView: View {
         ) {
             Chart(weeks) { week in
                 BarMark(x: .value("Vecka", week.date, unit: .weekOfYear), y: .value("Minuter", week.value))
-                    .foregroundStyle(Color.accentColor.gradient)
+                    .foregroundStyle(Theme.accent)
             }
             .chartYAxisLabel("min")
         }
@@ -258,9 +259,9 @@ struct TrendsView: View {
                         .foregroundStyle(by: .value("Serie", "Form"))
                 }
                 RuleMark(y: .value("Noll", 0))
-                    .foregroundStyle(Color.secondary.opacity(0.4))
+                    .foregroundStyle(Color.white.opacity(0.25))
             }
-            .chartForegroundStyleScale(["Kondition": Color.blue, "Trötthet": Color.pink, "Form": Color.green])
+            .chartForegroundStyleScale(["Kondition": Theme.blue, "Trötthet": Theme.hot, "Form": Theme.cyan])
             .chartLegend(position: .bottom)
         }
     }
@@ -548,8 +549,6 @@ private struct ComparisonTile: View {
 
 private extension View {
     func cardStyle() -> some View {
-        padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+        card()
     }
 }

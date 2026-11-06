@@ -97,6 +97,16 @@ final class RunSession {
         }
     }
 
+    /// Hur stor del av steget som är avklarad (0–1), för ringen. Öppna steg har ingen ände.
+    var stepProgress: Double {
+        guard let step = currentStep else { return state == .finished ? 1 : 0 }
+        switch step.goal {
+        case .time(let seconds): return seconds > 0 ? stepElapsed / seconds : 0
+        case .distance(let meters): return meters > 0 ? stepDistance / meters : 0
+        case .open: return 0
+        }
+    }
+
     @ObservationIgnored private let liveHeartRate: LiveHeartRate
     /// Pulszoner i bpm (zon 1–5) utifrån högsta uppmätta puls, eller tomt om den saknas.
     @ObservationIgnored private let zones: [ClosedRange<Double>]

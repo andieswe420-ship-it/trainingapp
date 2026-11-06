@@ -62,6 +62,7 @@ struct ProfileView: View {
             }
             .disabled(isLoading)
             .overlay { if isLoading { ProgressView() } }
+            .themedScreen()
             .navigationTitle("Min profil")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

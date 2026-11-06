@@ -166,6 +166,10 @@ Shared/                     Kod som delas av iPhone- och klockappen (LiveWorkout
 - `Info.plist` och `TrainingApp.entitlements` genereras också från `project.yml`
   (sektionerna `info:` och `entitlements:`) – ändra där.
 - Alla användarsynliga texter och behörighetstexter är på **svenska**.
+- **Design:** alltid mörk och sportig (`preferredColorScheme(.dark)`), färger från ikonen i
+  `Views/Theme.swift` – djupblå gradient (`themedScreen()`), kort (`card()`, `themedRow()` i listor),
+  cyan–blå accent (`PrimaryButtonStyle`, `ProgressRing`), rundade siffror (`Theme.metric`).
+  Intensitet: lätt = cyan, medel = blå, hårt = `Theme.hot`. Flikraden sätts per flik (`themedTabBar()`).
 - iOS 17+: använd `@Observable`, `NavigationStack`, `ContentUnavailableView`,
   async HealthKit-API:er (`HKSampleQueryDescriptor`).
 - Vyer får inte importera HealthKit-frågor direkt – gå via `HealthKitManager` (undantag:

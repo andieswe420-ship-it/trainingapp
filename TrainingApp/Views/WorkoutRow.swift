@@ -6,16 +6,17 @@ struct WorkoutRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: workout.symbolName)
-                .font(.title2)
-                .foregroundStyle(.tint)
-                .frame(width: 36)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Theme.cyan)
+                .frame(width: 42, height: 42)
+                .background(Circle().fill(Theme.cyan.opacity(0.14)))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(workout.activityName)
                     .font(.headline)
                 Text(workout.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute()))
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             }
 
             Spacer()
@@ -25,7 +26,7 @@ struct WorkoutRow: View {
                 Label(heartRateText, systemImage: "heart.fill")
                     .foregroundStyle(workout.averageHeartRate == nil ? .secondary : .primary)
             }
-            .font(.subheadline.monospacedDigit())
+            .font(.system(.subheadline, design: .rounded).weight(.semibold).monospacedDigit())
             .labelStyle(TrailingIconLabelStyle())
         }
         .padding(.vertical, 2)
@@ -54,7 +55,7 @@ private struct TrailingIconLabelStyle: LabelStyle {
             configuration.title
             configuration.icon
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.cyan.opacity(0.8))
         }
     }
 }

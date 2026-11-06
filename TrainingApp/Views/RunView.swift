@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Röstcoachat löppass: telefonen leder passet steg för steg i hörlurarna.
+/// Röstcoachat löppass: telefonen leder passet steg för steg i hörlurarna. Stegets tid eller sträcka
+/// fylls som ringen i appikonen.
 struct RunView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var session: RunSession
@@ -12,17 +13,20 @@ struct RunView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
+            VStack(spacing: 20) {
                 if session.state == .finished {
                     finishedView
                 } else {
-                    stepView
-                    statsView
-                    Spacer()
+                    stepRing
+                    statsCard
+                    Spacer(minLength: 0)
                     controls
                 }
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .themedScreen()
             .navigationTitle(session.workout.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -39,112 +43,125 @@ struct RunView: View {
         .interactiveDismissDisabled(session.state == .running || session.state == .paused)
     }
 
+    // MARK: - Steget
+
     @ViewBuilder
-    private var stepView: some View {
+    private var stepRing: some View {
         if let step = session.currentStep {
-            VStack(spacing: 8) {
-                Text(RunSpeech.title(step))
-                    .font(.title2.weight(.semibold))
-                Text(session.stepRemaining)
-                    .font(.system(size: 72, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                if let target = RunSpeech.targetLabel(step) {
-                    Label(target, systemImage: "target")
-                        .font(.headline)
+            VStack(spacing: 14) {
+                ZStack {
+                    ProgressRing(progress: session.stepProgress, lineWidth: 16)
+                    VStack(spacing: 6) {
+                        Text(RunSpeech.title(step).uppercased())
+                            .font(.caption.weight(.semibold))
+                            .tracking(1.5)
+                            .foregroundStyle(Theme.cyan)
+                        Text(session.stepRemaining)
+                            .font(Theme.metric(64))
+                            .foregroundStyle(.white)
+                            .minimumScaleFactor(0.5)
+                            .lineLimit(1)
+                        if let target = RunSpeech.targetLabel(step) {
+                            Label(target, systemImage: "target")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                        if session.state == .paused {
+                            Text("PAUSAT")
+                                .font(.caption.weight(.bold))
+                                .tracking(1.5)
+                                .foregroundStyle(.yellow)
+                        }
+                    }
+                    .padding(32)
                 }
+                .frame(maxWidth: 300)
+                .aspectRatio(1, contentMode: .fit)
+                .padding(.top, 8)
+
                 if !step.description.isEmpty {
                     Text(step.description)
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .multilineTextAlignment(.center)
                 }
-                Text("Steg \(session.stepIndex + 1) av \(session.steps.count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let next = session.nextStep {
-                    Text("Sedan: \(RunSpeech.title(next))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text("Steg \(session.stepIndex + 1) av \(session.steps.count)")
+                    if let next = session.nextStep {
+                        Text("·")
+                        Text("Sedan: \(RunSpeech.title(next))")
+                    }
                 }
+                .font(.caption)
+                .foregroundStyle(Theme.secondaryText)
             }
         }
     }
 
-    private var statsView: some View {
-        HStack {
-            stat("Tid", RunSpeech.clock(session.totalElapsed))
-            if session.watchStarted || session.heartRate != nil {
-                stat("Puls", session.heartRate.map { "\(Int($0.rounded()))" } ?? "–")
+    // MARK: - Nyckeltal
+
+    private var statsCard: some View {
+        VStack(spacing: 8) {
+            HStack {
+                MetricView(value: RunSpeech.clock(session.totalElapsed), label: "Tid")
+                if session.watchStarted || session.heartRate != nil {
+                    MetricView(value: session.heartRate.map { "\(Int($0.rounded()))" } ?? "–", label: "Puls")
+                }
+                if session.usesGPS {
+                    MetricView(value: RunSpeech.distanceShort(session.totalDistance), label: "Distans")
+                    MetricView(value: RunSpeech.paceShort(session.currentPace), label: "Tempo")
+                }
             }
-            if session.usesGPS {
-                stat("Distans", RunSpeech.distanceShort(session.totalDistance))
-                stat("Tempo", RunSpeech.paceShort(session.currentPace))
-            }
-        }
-        .overlay(alignment: .bottom) {
             if session.locationDenied && session.usesGPS {
                 Text("Platstjänster är avstängda – tempo och distans mäts inte.")
                     .font(.caption)
                     .foregroundStyle(.orange)
-                    .offset(y: 24)
             }
         }
+        .padding(.vertical, 4)
+        .card()
     }
 
-    private func stat(_ title: String, _ value: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .monospacedDigit()
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
+    // MARK: - Knappar
 
     @ViewBuilder
     private var controls: some View {
         switch session.state {
         case .ready:
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 voicePicker
                 Text("Runner's High på klockan startar passet automatiskt, skickar pulsen hit och sparar passet i Hälsa – starta inte Apples Träning-app samtidigt. Ta på dig hörlurarna; rösten sänker musiken när den pratar.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)
                 Button {
                     session.start()
                 } label: {
                     Label("Starta", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(PrimaryButtonStyle())
             }
         case .running, .paused:
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 HStack(spacing: 12) {
                     Button {
                         session.state == .running ? session.pause() : session.resume()
                     } label: {
                         Label(session.state == .running ? "Pausa" : "Fortsätt",
                               systemImage: session.state == .running ? "pause.fill" : "play.fill")
-                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PrimaryButtonStyle())
                     Button {
                         session.skip()
                     } label: {
                         Label("Nästa", systemImage: "forward.end.fill")
-                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(SecondaryButtonStyle())
                 }
-                .controlSize(.large)
                 Button("Avsluta passet", role: .destructive) {
                     session.finish()
                 }
+                .font(.subheadline.weight(.semibold))
             }
         case .finished:
             EmptyView()
@@ -161,47 +178,52 @@ struct RunView: View {
                     }
                 }
                 .pickerStyle(.menu)
+                Spacer(minLength: 0)
                 Button {
                     session.previewVoice()
                 } label: {
                     Label("Provlyssna", systemImage: "speaker.wave.2")
+                        .font(.subheadline.weight(.semibold))
                 }
-                .buttonStyle(.bordered)
+                .tint(Theme.cyan)
             }
             if !RunVoice.swedishVoices.contains(where: { $0.quality != .default }) {
                 Text("Låter rösten robotaktig? Ladda ner en svensk röst med kvaliteten Förbättrad eller Premium under Inställningar → Hjälpmedel → Uppläst innehåll → Röster → Svenska.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)
             }
         }
+        .card()
     }
 
+    // MARK: - Klart
+
     private var finishedView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             Spacer()
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.green)
+            ZStack {
+                ProgressRing(progress: 1, lineWidth: 12)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundStyle(Theme.cyan)
+            }
+            .frame(width: 150, height: 150)
             Text("Passet är klart")
                 .font(.title.weight(.bold))
-            statsView
+            statsCard
             Text(session.watchStarted
                  ? "Passet sparas från klockan. När det har synkats frågar coachen hur det kändes."
                  : "Avsluta passet på klockan. När det har synkats frågar coachen hur det kändes.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
                 .multilineTextAlignment(.center)
             Spacer()
-            Button {
+            Button("Klar") {
                 session.stop()
                 dismiss()
-            } label: {
-                Text("Klar")
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(PrimaryButtonStyle())
         }
     }
 }

@@ -6,9 +6,9 @@ struct MetricsRow: View {
     var body: some View {
         HStack(alignment: .top) {
             MetricTile(title: "Vilopuls", unit: "bpm", sample: metrics.restingHeartRate, format: "%.0f")
-            Divider()
+            Divider().overlay(Theme.border)
             MetricTile(title: "HRV", unit: "ms", sample: metrics.heartRateVariability, format: "%.0f")
-            Divider()
+            Divider().overlay(Theme.border)
             MetricTile(title: "VO2 max", unit: "ml/kg/min", sample: metrics.vo2Max, format: "%.1f")
         }
         .padding(.vertical, 4)
@@ -23,18 +23,20 @@ private struct MetricTile: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(title.uppercased())
+                .font(.caption2.weight(.semibold))
+                .tracking(1)
+                .foregroundStyle(Theme.cyan)
             Text(sample.map { String(format: format, $0.value) } ?? "–")
-                .font(.title2.weight(.semibold).monospacedDigit())
+                .font(Theme.metric(28))
+                .foregroundStyle(.white)
             Text(unit)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
             if let date = sample?.date {
                 Text(date.formatted(.relative(presentation: .named)))
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.secondaryText.opacity(0.7))
             }
         }
         .frame(maxWidth: .infinity)

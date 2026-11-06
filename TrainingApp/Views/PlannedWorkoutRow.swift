@@ -8,16 +8,24 @@ struct PlannedWorkoutRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Image(systemName: workout.activity.symbolName)
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-                    .frame(width: 36)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Theme.color(for: workout.intensity))
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Theme.color(for: workout.intensity).opacity(0.16)))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(workout.title)
                         .font(.headline)
-                    Text("\(workout.activity.swedishName) · \(workout.intensity.label) · ca \(Int(workout.estimatedMinutes.rounded())) min")
+                    Text("\(workout.activity.swedishName) · ca \(Int(workout.estimatedMinutes.rounded())) min")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
+                Spacer(minLength: 0)
+                Text(workout.intensity.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.color(for: workout.intensity))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Theme.color(for: workout.intensity).opacity(0.16)))
             }
 
             Text(workout.description)
