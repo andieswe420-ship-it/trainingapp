@@ -32,18 +32,19 @@ enum RunSpeech {
         return "30 sekunder kvar, sedan \(shortName(next))."
     }
 
-    static func kilometer(_ kilometers: Int, pace: Double?) -> String {
-        let distance = kilometers == 1 ? "En kilometer" : "\(kilometers) kilometer"
-        guard let pace else { return "\(distance)." }
-        return "\(distance). Tempo \(self.pace(pace))."
+    static func kilometer(_ kilometers: Int, pace: Double?, heartRate: Double?) -> String {
+        var text = kilometers == 1 ? "En kilometer." : "\(kilometers) kilometer."
+        if let pace { text += " Tempo \(self.pace(pace))." }
+        if let heartRate { text += " Puls \(Int(heartRate.rounded()))." }
+        return text
     }
 
-    static func summary(time: TimeInterval, distance: Double?) -> String {
+    static func summary(time: TimeInterval, distance: Double?, watchSaves: Bool) -> String {
         var text = "Passet är klart, bra jobbat! \(duration(time))"
         if let distance, distance > 100 {
             text += " och \(distanceSpoken(distance))"
         }
-        return text + ". Glöm inte att avsluta passet på klockan."
+        return text + (watchSaves ? ". Passet sparas från klockan." : ". Glöm inte att avsluta passet på klockan.")
     }
 
     /// "5 och 10 per kilometer", som löpare säger det.

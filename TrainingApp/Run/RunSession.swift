@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreLocation
 import Foundation
+import HealthKit
 import Observation
 
 /// Ett steg i passet som röstcoachen leder: planens block och upprepningar utplattade i ordning.
@@ -57,8 +58,8 @@ struct RunStep: Identifiable, Sendable {
 }
 
 /// Leder ett planerat löppass med rösten i hörlurarna: telefonen håller tiden, mäter tempo och distans
-/// med GPS och säger till vid varje steg. Klockan spelar in passet som vanligt (puls, Hälsa) – därför
-/// sparar röstcoachen inget eget pass.
+/// med GPS och säger till vid varje steg. Klockappen startas samtidigt, spelar in passet i Hälsa och
+/// skickar pulsen live (`LiveHeartRate`) – därför sparar röstcoachen inget eget pass.
 @MainActor
 @Observable
 final class RunSession {
@@ -77,6 +78,11 @@ final class RunSession {
     /// Tempo de senaste ~30 sekunderna, sekunder per km.
     private(set) var currentPace: Double?
     private(set) var locationDenied = false
+    /// Klockappen startades och kör passet.
+    private(set) var watchStarted = false
+
+    /// Pulsen från klockan, om den är färsk.
+    var heartRate: Double? { liveHeartRate.current }
 
     var currentStep: RunStep? { steps.indices.contains(stepIndex) ? steps[stepIndex] : nil }
     var nextStep: RunStep? { steps.indices.contains(stepIndex + 1) ? steps[stepIndex + 1] : nil }
@@ -91,6 +97,9 @@ final class RunSession {
         }
     }
 
+    @ObservationIgnored private let liveHeartRate: LiveHeartRate
+    /// Pulszoner i bpm (zon 1–5) utifrån högsta uppmätta puls, eller tomt om den saknas.
+    @ObservationIgnored private let zones: [ClosedRange<Double>]
     @ObservationIgnored private let voice = RunVoice()
     @ObservationIgnored private let tracker = RunLocationTracker()
     @ObservationIgnored private var ticker: Task<Void, Never>?
@@ -107,14 +116,28 @@ final class RunSession {
         var countdown = false
         var lastMeters = false
         var lastPaceCheck: TimeInterval = 0
+        var lastHeartRateCheck: TimeInterval = 0
     }
 
-    init(workout: PlannedWorkout) {
+    init(workout: PlannedWorkout, maxHeartRate: Double?, liveHeartRate: LiveHeartRate = .shared) {
         self.workout = workout
+        self.liveHeartRate = liveHeartRate
+        zones = Self.zones(maxHeartRate: maxHeartRate)
         usesGPS = workout.location == .outdoor
         steps = RunStep.steps(for: workout, usesGPS: usesGPS)
         tracker.onDistance = { [weak self] meters in self?.addDistance(meters) }
         tracker.onDenied = { [weak self] in self?.locationDenied = true }
+        liveHeartRate.onRemoteEnd = { [weak self] in self?.finish(fromWatch: true) }
+    }
+
+    /// Zon n = 40 + 10·n till 50 + 10·n % av maxpulsen (zon 1 = 50–60 %, zon 5 = 90–100 %).
+    /// Klockans egna zoner går inte att läsa, så det här är en uppskattning.
+    private static func zones(maxHeartRate: Double?) -> [ClosedRange<Double>] {
+        guard let max = maxHeartRate, max > 120 else { return [] }
+        return (1...5).map { zone in
+            let low = (0.4 + 0.1 * Double(zone)) * max
+            return low...(low + 0.1 * max)
+        }
     }
 
     func start() {
@@ -124,6 +147,10 @@ final class RunSession {
         // GPS-uppdateringarna håller också appen igång med låst skärm, även på löpband.
         tracker.start()
         voice.say("Nu kör vi. \(workout.title). \(RunSpeech.intro(first, next: nextStep))")
+        Task {
+            let activity: HKWorkoutActivityType = workout.activity == .walking ? .walking : .running
+            watchStarted = await liveHeartRate.startWatchWorkout(activity: activity, outdoor: usesGPS)
+        }
         ticker = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
@@ -138,6 +165,7 @@ final class RunSession {
         state = .paused
         tracker.resetLastLocation()
         voice.say("Pausat.")
+        Task { await liveHeartRate.send(.pause) }
     }
 
     func resume() {
@@ -145,6 +173,7 @@ final class RunSession {
         lastTick = .now
         state = .running
         voice.say("Vi fortsätter.")
+        Task { await liveHeartRate.send(.resume) }
     }
 
     /// Hoppar till nästa steg, t.ex. för öppna steg eller distans på löpband.
@@ -153,13 +182,16 @@ final class RunSession {
         advance()
     }
 
-    func finish() {
-        guard state != .finished else { return }
+    /// Avslutar passet, även på klockan (som då sparar det i Hälsa).
+    func finish(fromWatch: Bool = false) {
+        guard state == .running || state == .paused else { return }
         if state == .running { tick() }
         ticker?.cancel()
         tracker.stop()
         state = .finished
-        voice.say(RunSpeech.summary(time: totalElapsed, distance: usesGPS ? totalDistance : nil))
+        if !fromWatch { Task { await liveHeartRate.send(.end) } }
+        voice.say(RunSpeech.summary(time: totalElapsed, distance: usesGPS ? totalDistance : nil,
+                                    watchSaves: watchStarted))
     }
 
     /// Avbryter utan sammanfattning (när vyn stängs).
@@ -192,7 +224,7 @@ final class RunSession {
         let kilometers = Int(totalDistance / 1000)
         if kilometers > spokenKilometers {
             spokenKilometers = kilometers
-            voice.say(RunSpeech.kilometer(kilometers, pace: currentPace))
+            voice.say(RunSpeech.kilometer(kilometers, pace: currentPace, heartRate: heartRate))
         }
     }
 
@@ -256,6 +288,36 @@ final class RunSession {
             break
         }
         checkPace(step)
+        checkHeartRate(step)
+    }
+
+    /// Under steg med pulsmål: säg till om pulsen ligger utanför, högst en gång i minuten. Pulsen
+    /// släpar efter ansträngningen, så första kontrollen görs efter en minut.
+    private func checkHeartRate(_ step: RunStep) {
+        guard let target = step.target, let bpm = heartRate,
+              let range = targetRange(target),
+              stepElapsed >= 60, stepElapsed - cues.lastHeartRateCheck >= 60,
+              stepElapsed - cues.lastPaceCheck >= 20
+        else { return }
+        cues.lastHeartRateCheck = stepElapsed
+        let margin = 3.0
+        if bpm > range.upperBound + margin {
+            voice.say("Pulsen är \(Int(bpm.rounded())), lite hög. Sänk tempot.")
+        } else if bpm < range.lowerBound - margin, step.kind == .work {
+            voice.say("Pulsen är \(Int(bpm.rounded())). Du kan öka lite.")
+        }
+    }
+
+    private func targetRange(_ target: PlanStep) -> ClosedRange<Double>? {
+        switch target.targetType {
+        case .heartRateRange where target.targetHigh > target.targetLow:
+            return target.targetLow...target.targetHigh
+        case .heartRateZone:
+            let zone = min(5, max(1, Int(target.targetLow.rounded())))
+            return zones.indices.contains(zone - 1) ? zones[zone - 1] : nil
+        default:
+            return nil
+        }
     }
 
     /// Under steg med tempomål: säg till om tempot ligger utanför, högst en gång i minuten.

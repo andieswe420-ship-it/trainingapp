@@ -24,6 +24,9 @@ struct TrainingApp: App {
         _coachStore = State(initialValue: coach)
         _insightStore = State(initialValue: InsightStore(sync: sync))
 
+        // Klockappen kan spegla sitt pass hit så fort röstcoachen startat den – ta emot det direkt.
+        _ = LiveHeartRate.shared
+
         // Nytt pass i Hälsa (även när appen ligger i bakgrunden): synka och låt coachen fråga.
         health.observeNewWorkouts {
             guard sync.isSignedIn, health.state != .loading else { return }

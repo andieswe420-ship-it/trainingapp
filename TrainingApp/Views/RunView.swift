@@ -5,8 +5,8 @@ struct RunView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var session: RunSession
 
-    init(workout: PlannedWorkout) {
-        _session = State(initialValue: RunSession(workout: workout))
+    init(workout: PlannedWorkout, maxHeartRate: Double?) {
+        _session = State(initialValue: RunSession(workout: workout, maxHeartRate: maxHeartRate))
     }
 
     var body: some View {
@@ -72,6 +72,9 @@ struct RunView: View {
     private var statsView: some View {
         HStack {
             stat("Tid", RunSpeech.clock(session.totalElapsed))
+            if session.watchStarted || session.heartRate != nil {
+                stat("Puls", session.heartRate.map { "\(Int($0.rounded()))" } ?? "–")
+            }
             if session.usesGPS {
                 stat("Distans", RunSpeech.distanceShort(session.totalDistance))
                 stat("Tempo", RunSpeech.paceShort(session.currentPace))
@@ -104,7 +107,7 @@ struct RunView: View {
         switch session.state {
         case .ready:
             VStack(spacing: 12) {
-                Text("Starta passet på klockan också, så sparas puls och pass i Hälsa som vanligt. Ta på dig hörlurarna – rösten sänker musiken när den pratar.")
+                Text("Klockappen startar passet automatiskt, skickar pulsen hit och sparar passet i Hälsa – starta inte Träning-appen samtidigt. Ta på dig hörlurarna; rösten sänker musiken när den pratar.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -155,7 +158,9 @@ struct RunView: View {
             Text("Passet är klart")
                 .font(.title.weight(.bold))
             statsView
-            Text("Avsluta passet på klockan. När det har synkats frågar coachen hur det kändes.")
+            Text(session.watchStarted
+                 ? "Passet sparas från klockan. När det har synkats frågar coachen hur det kändes."
+                 : "Avsluta passet på klockan. När det har synkats frågar coachen hur det kändes.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

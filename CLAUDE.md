@@ -93,15 +93,24 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    (`onChange` i `TrainingApp`) och när appen blir aktiv – bara om behörigheten redan finns.
    Ett fingeravtryck (plan-id, datum, kommande pass) i UserDefaults förhindrar onödiga omläggningar.
 5. **Apple Watch** – schemalagda pass synkas automatiskt till Träning-appen på klockan.
-   Ingen egen watchOS-target behövs.
+   För röstcoachen finns en liten klockapp, `TrainingAppWatch/` (watchOS 10, inbäddad i iPhone-appen
+   via target-beroendet i `project.yml`): `WatchWorkoutManager` kör passet med `HKWorkoutSession` +
+   `HKLiveWorkoutBuilder`, speglar det till telefonen (`startMirroringToCompanionDevice`), skickar
+   pulsen som `LiveWorkoutMessage` (`Shared/`, används av båda targets) och sparar passet i Hälsa.
 6. **Röstcoach under löpning** – `TrainingApp/Run/`. Personen springer med telefonen: `RunSession`
    plattar ut planens pass till steg (`RunStep`), håller tiden, mäter tempo/distans med GPS
    (`RunLocationTracker`, bara utomhus; på löpband blir distanssteg "tryck på Nästa") och talar
    svenska via `AVSpeechSynthesizer` (`RunVoice`, sänker musiken). Texterna finns i `RunSpeech`:
    stegstart, halvvägs, 30 s kvar + nästa steg, nedräkning, 100 m kvar, kilometertider och
-   tempokorrigering (en gång i minuten vid tempomål). Puls kan inte läsas live utan klockapp, så
-   pulszoner sägs bara som instruktion. Klockan spelar in passet i Träning-appen – röstcoachen
-   sparar inget eget pass. Bakgrundslägen `location` och `audio` håller appen igång med låst skärm.
+   tempokorrigering (en gång i minuten vid tempomål). **Live-puls:** vid Starta öppnar telefonen
+   klockappen (`HKHealthStore.startWatchApp`); `LiveHeartRate` (HealthKit/, sätter
+   `workoutSessionMirroringStartHandler` vid appstart) tar emot det speglade passet och pulsen.
+   iOS 17 saknar egen `HKLiveWorkoutBuilder` i telefonen – därför datakanalen. Paus/fortsätt/avsluta
+   skickas till klockan; avslutas passet på klockan slutar röstcoachen också. Pulscues: en gång i
+   minuten efter första minuten vid pulsmål (zon eller intervall), plus puls i kilometercuen. Zonerna
+   uppskattas från högsta uppmätta puls (zon n = 40+10n till 50+10n % av max) – klockans egna zoner
+   går inte att läsa. Klockappen spelar in passet – starta inte Träning-appen samtidigt.
+   Bakgrundslägen `location` och `audio` håller appen igång med låst skärm.
    Start: "Spring med röstcoach" på löp-/promenadpass i Plan-fliken (`RunView`).
 
 ## Faser
@@ -119,8 +128,8 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
       form/belastning (TRIMP, kondition/trötthet/form, belastningskvot), aerob effektivitet
       (meter per hjärtslag), AI-analys och "Fråga coachen". 180 dagars historik från HealthKit.
 - [x] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
-- [ ] **Fas 5** – Röstcoach under löpning: steg-/tempocues i telefonen (klar), sedan personliga
-      AI-repliker före passet.
+- [ ] **Fas 5** – Röstcoach under löpning: steg-/tempocues i telefonen (klar), live-puls från
+      klockappen (klar), sedan personliga AI-repliker före passet.
 
 ## Projektstruktur
 
@@ -140,6 +149,8 @@ TrainingApp/
   Views/                    SwiftUI-vyer
   Scheduling/               WorkoutKit (behörighet, översättning av planen, schemaläggning)
   Run/                      Röstcoach under löpning (RunSession, RunVoice, RunSpeech)
+TrainingAppWatch/           Klockapp för röstcoachen (passet + live-puls till telefonen)
+Shared/                     Kod som delas av iPhone- och klockappen (LiveWorkoutMessage)
   Resources/                Assets.xcassets
 ```
 
@@ -152,7 +163,8 @@ TrainingApp/
 - Alla användarsynliga texter och behörighetstexter är på **svenska**.
 - iOS 17+: använd `@Observable`, `NavigationStack`, `ContentUnavailableView`,
   async HealthKit-API:er (`HKSampleQueryDescriptor`).
-- Vyer får inte importera HealthKit-frågor direkt – gå via `HealthKitManager`.
+- Vyer får inte importera HealthKit-frågor direkt – gå via `HealthKitManager` (undantag:
+  `LiveHeartRate` för det speglade passet under röstcoachen).
   Samma sak för Supabase – gå via `SyncService`.
 - I xcconfig startar `//` en kommentar – ange därför `SUPABASE_HOST` utan `https://`.
 

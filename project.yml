@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.andieswe420
   deploymentTarget:
     iOS: "17.0"
+    watchOS: "10.0"
   createIntermediateGroups: true
   developmentLanguage: sv
 
@@ -24,10 +25,13 @@ targets:
     platform: iOS
     sources:
       - path: TrainingApp
+      - path: Shared
     dependencies:
       - sdk: HealthKit.framework
       - sdk: WorkoutKit.framework
       - package: Supabase
+      # Klockappen bäddas in i iPhone-appen och installeras på klockan tillsammans med den.
+      - target: TrainingAppWatch
     configFiles:
       Debug: Config/App.xcconfig
       Release: Config/App.xcconfig
@@ -66,6 +70,39 @@ targets:
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
         com.apple.developer.healthkit.background-delivery: true
+
+  # Klockapp till röstcoachen: startas av telefonen, kör passet och skickar pulsen live.
+  TrainingAppWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: TrainingAppWatch
+      - path: Shared
+    dependencies:
+      - sdk: HealthKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.andieswe420.TrainingApp.watchkitapp
+        TARGETED_DEVICE_FAMILY: "4"
+    info:
+      path: TrainingAppWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Träning
+        CFBundleDevelopmentRegion: sv
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.andieswe420.TrainingApp
+        WKBackgroundModes:
+          - workout-processing
+        NSHealthShareUsageDescription: >-
+          Klockappen läser din puls under passet så att röstcoachen i telefonen
+          kan ge dig feedback i realtid.
+        NSHealthUpdateUsageDescription: >-
+          Klockappen sparar löppasset med puls, distans och energi i Hälsa.
+    entitlements:
+      path: TrainingAppWatch/TrainingAppWatch.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
 
 schemes:
   TrainingApp:

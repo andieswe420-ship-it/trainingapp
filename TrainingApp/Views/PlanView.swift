@@ -28,7 +28,9 @@ struct PlanView: View {
                 }
                 .sheet(isPresented: $showAccount) { AccountView() }
                 .sheet(isPresented: $showProfile) { ProfileView() }
-                .fullScreenCover(item: $runWorkout) { RunView(workout: $0) }
+                .fullScreenCover(item: $runWorkout) { workout in
+                    RunView(workout: workout, maxHeartRate: health.workouts.compactMap(\.maxHeartRate).max())
+                }
         }
         .task(id: sync.userEmail) {
             if sync.isSignedIn { await store.loadLatest() }
