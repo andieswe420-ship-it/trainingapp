@@ -87,33 +87,48 @@ struct SectionTitle: View {
 
 /// Huvudknappen: ikonens cyan–blå gradient med mörk text.
 struct PrimaryButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .foregroundStyle(Theme.backgroundTop)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .background(Capsule().fill(Theme.accent))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+        PrimaryButton(configuration: configuration)
+    }
+
+    /// `isEnabled` kan bara läsas i en vy, inte i själva knappstilen.
+    private struct PrimaryButton: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .font(.headline)
+                .foregroundStyle(Theme.backgroundTop)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity)
+                .background(Capsule().fill(Theme.accent))
+                .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
+                .scaleEffect(configuration.isPressed ? 0.98 : 1)
+        }
     }
 }
 
 /// Sekundär knapp: genomskinlig kapsel med vit text.
 struct SecondaryButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .foregroundStyle(.white)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .background(Capsule().fill(Color.white.opacity(configuration.isPressed ? 0.18 : 0.10)))
-            .overlay(Capsule().strokeBorder(Theme.border))
-            .opacity(isEnabled ? 1 : 0.4)
+        SecondaryButton(configuration: configuration)
+    }
+
+    private struct SecondaryButton: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .font(.headline)
+                .foregroundStyle(.white)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity)
+                .background(Capsule().fill(Color.white.opacity(configuration.isPressed ? 0.18 : 0.10)))
+                .overlay(Capsule().strokeBorder(Theme.border))
+                .opacity(isEnabled ? 1 : 0.4)
+        }
     }
 }
 
