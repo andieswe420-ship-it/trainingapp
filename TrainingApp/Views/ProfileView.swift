@@ -14,54 +14,59 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Mål") {
-                    TextField("T.ex. 10 km under 45 min i vår", text: $profile.goals, axis: .vertical)
-                        .lineLimit(1...4)
-                }
+                // Group sprider kortbakgrunden till varje sektions rader.
+                Group {
+                    Section("Mål") {
+                        TextField("T.ex. 10 km under 45 min i vår", text: $profile.goals, axis: .vertical)
+                            .lineLimit(1...4)
+                    }
 
-                Section {
-                    ForEach(AthleteProfile.Weekday.allCases) { day in
-                        HStack {
-                            Text(day.swedishName)
-                                .frame(width: 80, alignment: .leading)
-                            TextField("Flexibel", text: binding(for: day))
+                    Section {
+                        ForEach(AthleteProfile.Weekday.allCases) { day in
+                            HStack {
+                                Text(day.swedishName)
+                                    .frame(width: 80, alignment: .leading)
+                                TextField("Flexibel", text: binding(for: day))
+                            }
+                        }
+                    } header: {
+                        Text("Veckoschema")
+                    } footer: {
+                        Text("Skriv vad dagen ska innehålla, t.ex. \"Vila\" eller \"Intervaller inomhus\". Tom dag = flexibel.")
+                    }
+
+                    Section("Skador och begränsningar") {
+                        TextField("T.ex. känning i vänster hälsena", text: $profile.limitations, axis: .vertical)
+                            .lineLimit(1...4)
+                    }
+
+                    Section {
+                        TextField("Andra preferenser", text: $profile.notes, axis: .vertical)
+                            .lineLimit(1...4)
+                    } header: {
+                        Text("Övrigt")
+                    } footer: {
+                        Text("Coachen uppdaterar profilen när du berättar något bestående i chatten. Profilen används också när nya veckoplaner skapas.")
+                    }
+
+                    Section {
+                        Toggle("Automatisk veckoplan", isOn: $profile.autoWeeklyPlan)
+                    } footer: {
+                        Text("Varje söndagskväll skapas nästa veckas plan (måndag–söndag) automatiskt, och du får en notis när den är klar.")
+                    }
+
+                    if let errorMessage {
+                        Section {
+                            Label(errorMessage, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.red)
                         }
                     }
-                } header: {
-                    Text("Veckoschema")
-                } footer: {
-                    Text("Skriv vad dagen ska innehålla, t.ex. \"Vila\" eller \"Intervaller inomhus\". Tom dag = flexibel.")
                 }
-
-                Section("Skador och begränsningar") {
-                    TextField("T.ex. känning i vänster hälsena", text: $profile.limitations, axis: .vertical)
-                        .lineLimit(1...4)
-                }
-
-                Section {
-                    TextField("Andra preferenser", text: $profile.notes, axis: .vertical)
-                        .lineLimit(1...4)
-                } header: {
-                    Text("Övrigt")
-                } footer: {
-                    Text("Coachen uppdaterar profilen när du berättar något bestående i chatten. Profilen används också när nya veckoplaner skapas.")
-                }
-
-                Section {
-                    Toggle("Automatisk veckoplan", isOn: $profile.autoWeeklyPlan)
-                } footer: {
-                    Text("Varje söndagskväll skapas nästa veckas plan (måndag–söndag) automatiskt, och du får en notis när den är klar.")
-                }
-
-                if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
-                    }
-                }
+                .themedRow()
             }
             .disabled(isLoading)
             .overlay { if isLoading { ProgressView() } }
+            .themedScreen()
             .navigationTitle("Min profil")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

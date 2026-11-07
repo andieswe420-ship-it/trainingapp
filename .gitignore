@@ -13,3 +13,7 @@ xcuserdata/
 # Hemligheter (Supabase-nycklar m.m. i senare faser)
 Secrets.xcconfig
 *.env
+
+# Klockappen – genereras också av XcodeGen
+TrainingAppWatch/Info.plist
+TrainingAppWatch/TrainingAppWatch.entitlements

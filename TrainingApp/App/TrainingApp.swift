@@ -11,6 +11,7 @@ struct TrainingApp: App {
     @State private var planStore: PlanStore
     @State private var coachStore: CoachStore
     @State private var insightStore: InsightStore
+    @State private var watchScheduler = WatchScheduler()
     @State private var router = AppRouter.shared
 
     init() {
@@ -22,6 +23,9 @@ struct TrainingApp: App {
         _planStore = State(initialValue: PlanStore(sync: sync))
         _coachStore = State(initialValue: coach)
         _insightStore = State(initialValue: InsightStore(sync: sync))
+
+        // Klockappen kan spegla sitt pass hit så fort röstcoachen startat den – ta emot det direkt.
+        _ = LiveHeartRate.shared
 
         // Nytt pass i Hälsa (även när appen ligger i bakgrunden): synka och låt coachen fråga.
         health.observeNewWorkouts {
@@ -43,16 +47,20 @@ struct TrainingApp: App {
         WindowGroup {
             TabView(selection: $router.selectedTab) {
                 WorkoutListView()
+                    .themedTabBar()
                     .tabItem { Label("Pass", systemImage: "list.bullet") }
                     .tag(AppTab.workouts)
                 PlanView()
+                    .themedTabBar()
                     .tabItem { Label("Plan", systemImage: "calendar") }
                     .tag(AppTab.plan)
                 CoachView()
+                    .themedTabBar()
                     .tabItem { Label("Coach", systemImage: "bubble.left.and.bubble.right") }
                     .badge(coachStore.unreadCount)
                     .tag(AppTab.coach)
                 TrendsView()
+                    .themedTabBar()
                     .tabItem { Label("Trender", systemImage: "chart.xyaxis.line") }
                     .tag(AppTab.trends)
             }
@@ -61,7 +69,15 @@ struct TrainingApp: App {
             .environment(planStore)
             .environment(coachStore)
             .environment(insightStore)
+            .environment(watchScheduler)
+            // Alltid mörk och sportig – färgerna kommer från ikonen (Theme).
+            .preferredColorScheme(.dark)
+            .tint(Theme.cyan)
             .task { await sync.observeAuthChanges() }
+            // Ny plan eller godkänd ändring från coachen: lägg passen på klockan.
+            .onChange(of: planStore.plan) { _, plan in
+                Task { await watchScheduler.syncIfNeeded(plan) }
+            }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task { await refreshOnActivate() }
@@ -76,5 +92,6 @@ struct TrainingApp: App {
         await sync.sync(workouts: healthStore.workouts, samples: healthStore.samples, daily: healthStore.dailyMetrics)
         await coachStore.refresh()
         await planStore.loadLatest()
+        await watchScheduler.syncIfNeeded(planStore.plan)
     }
 }

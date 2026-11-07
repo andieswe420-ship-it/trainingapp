@@ -1,4 +1,7 @@
-# TrainingApp – personlig träningsapp (iOS 17+, SwiftUI)
+# Runner's High – personlig träningsapp (iOS 17+, SwiftUI)
+
+Visningsnamnet är "Runner's High" (iPhone och klocka); projekt, targets och bundle-id heter
+fortfarande `TrainingApp` – byt inte bundle-id, då försvinner installationen och behörigheterna.
 
 ## Arkitektur (målbild)
 
@@ -82,12 +85,38 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    Deploy: `supabase functions deploy plan-week coach` och
    `supabase functions deploy weekly-plans --no-verify-jwt` (eller Supabase MCP – ange då
    `import_map_path: deno.json` och skicka med `_shared`-filerna som `../_shared/<fil>`).
-4. **WorkoutKit** – (fas 4) appen hämtar planen och översätter den till
-   `CustomWorkout`/`WorkoutPlan` och schemalägger med `WorkoutScheduler`.
-   Användaren har en färdig `WorkoutScheduling.swift` som ska in i `TrainingApp/Scheduling/`.
-   `WorkoutKitAuthorization` finns redan där och kan slås ihop med den filen.
+4. **WorkoutKit** – `TrainingApp/Scheduling/WorkoutScheduling.swift`. `WorkoutPlanBuilder` översätter
+   ett `PlannedWorkout` till `CustomWorkout` (uppvärmning/nedvarvning → `WorkoutStep`, block →
+   `IntervalBlock`, steg → `IntervalStep` med mål och larm: pulszon, pulsintervall, tempo som fart).
+   Mål/larm som klockan inte stöder för aktiviteten tas bort (`supportsGoal`/`supportsAlert`);
+   aktiviteter utan stöd för egna pass läggs in som `SingleGoalWorkout` med tidsmål.
+   `WatchScheduler` tar bort appens schemalagda pass och lägger in planens pass från idag
+   (kl. 08:00, idag om några minuter), max `maxAllowedScheduledWorkoutCount`. Knapp i Plan-fliken;
+   med "Uppdatera klockan automatiskt" (standard på) synkas klockan när planen ändras
+   (`onChange` i `TrainingApp`) och när appen blir aktiv – bara om behörigheten redan finns.
+   Ett fingeravtryck (plan-id, datum, kommande pass) i UserDefaults förhindrar onödiga omläggningar.
 5. **Apple Watch** – schemalagda pass synkas automatiskt till Träning-appen på klockan.
-   Ingen egen watchOS-target behövs.
+   För röstcoachen finns en liten klockapp, `TrainingAppWatch/` (watchOS 10, inbäddad i iPhone-appen
+   via target-beroendet i `project.yml`): `WatchWorkoutManager` kör passet med `HKWorkoutSession` +
+   `HKLiveWorkoutBuilder`, speglar det till telefonen (`startMirroringToCompanionDevice`), skickar
+   pulsen som `LiveWorkoutMessage` (`Shared/`, används av båda targets) och sparar passet i Hälsa.
+6. **Röstcoach under löpning** – `TrainingApp/Run/`. Personen springer med telefonen: `RunSession`
+   plattar ut planens pass till steg (`RunStep`), håller tiden, mäter tempo/distans med GPS
+   (`RunLocationTracker`, bara utomhus; på löpband blir distanssteg "tryck på Nästa") och talar
+   svenska via `AVSpeechSynthesizer` (`RunVoice`, sänker musiken; väljer bästa installerade svenska rösten
+   – Premium > Förbättrad > Standard – eller den som valts i löpskärmen, `runVoiceIdentifier`). Texterna finns i `RunSpeech`:
+   stegstart, halvvägs, 30 s kvar + nästa steg, nedräkning, 100 m kvar, kilometertider och
+   tempokorrigering (en gång i minuten vid tempomål). **Live-puls:** vid Starta öppnar telefonen
+   klockappen (`HKHealthStore.startWatchApp`); `LiveHeartRate` (HealthKit/, sätter
+   `workoutSessionMirroringStartHandler` vid appstart) tar emot det speglade passet och pulsen.
+   iOS 17 saknar egen `HKLiveWorkoutBuilder` i telefonen – därför datakanalen. Paus/fortsätt/avsluta
+   skickas till klockan; avslutas passet på klockan slutar röstcoachen också. Pulscues: en gång i
+   minuten efter första minuten vid pulsmål (zon eller intervall), plus puls i kilometercuen. Zonerna
+   uppskattas från högsta uppmätta puls (zon n = 40+10n till 50+10n % av max) – klockans egna zoner
+   går inte att läsa. Klockappen (visningsnamn "Runner's High", inte "Träning" som Apples app) spelar in
+   passet – starta inte Apples Träning-app samtidigt.
+   Bakgrundslägen `location` och `audio` håller appen igång med låst skärm.
+   Start: "Spring med röstcoach" på löp-/promenadpass i Plan-fliken (`RunView`).
 
 ## Faser
 
@@ -103,7 +132,9 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 - [x] **Fas 3e** – Utökade trender: periodval och jämförelse, normalintervall (band),
       form/belastning (TRIMP, kondition/trötthet/form, belastningskvot), aerob effektivitet
       (meter per hjärtslag), AI-analys och "Fråga coachen". 180 dagars historik från HealthKit.
-- [ ] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
+- [x] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
+- [ ] **Fas 5** – Röstcoach under löpning: steg-/tempocues i telefonen (klar), live-puls från
+      klockappen (klar), sedan personliga AI-repliker före passet.
 
 ## Projektstruktur
 
@@ -121,7 +152,10 @@ TrainingApp/
   Planning/                 PlanStore, CoachStore, InsightStore (beställ/skicka, polla tills klart)
   Sync/                     SyncService (Supabase-auth + upsert), DTO:er, konfiguration
   Views/                    SwiftUI-vyer
-  Scheduling/               WorkoutKit (behörighet nu, schemaläggning i fas 4)
+  Scheduling/               WorkoutKit (behörighet, översättning av planen, schemaläggning)
+  Run/                      Röstcoach under löpning (RunSession, RunVoice, RunSpeech)
+TrainingAppWatch/           Klockapp för röstcoachen (passet + live-puls till telefonen)
+Shared/                     Kod som delas av iPhone- och klockappen (LiveWorkoutMessage)
   Resources/                Assets.xcassets
 ```
 
@@ -132,9 +166,14 @@ TrainingApp/
 - `Info.plist` och `TrainingApp.entitlements` genereras också från `project.yml`
   (sektionerna `info:` och `entitlements:`) – ändra där.
 - Alla användarsynliga texter och behörighetstexter är på **svenska**.
+- **Design:** alltid mörk och sportig (`preferredColorScheme(.dark)`), färger från ikonen i
+  `Views/Theme.swift` – djupblå gradient (`themedScreen()`), kort (`card()`, `themedRow()` i listor),
+  cyan–blå accent (`PrimaryButtonStyle`, `ProgressRing`), rundade siffror (`Theme.metric`).
+  Intensitet: lätt = cyan, medel = blå, hårt = `Theme.hot`. Flikraden sätts per flik (`themedTabBar()`).
 - iOS 17+: använd `@Observable`, `NavigationStack`, `ContentUnavailableView`,
   async HealthKit-API:er (`HKSampleQueryDescriptor`).
-- Vyer får inte importera HealthKit-frågor direkt – gå via `HealthKitManager`.
+- Vyer får inte importera HealthKit-frågor direkt – gå via `HealthKitManager` (undantag:
+  `LiveHeartRate` för det speglade passet under röstcoachen).
   Samma sak för Supabase – gå via `SyncService`.
 - I xcconfig startar `//` en kommentar – ange därför `SUPABASE_HOST` utan `https://`.
 
