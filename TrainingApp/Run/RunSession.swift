@@ -80,6 +80,31 @@ final class RunSession {
     private(set) var locationDenied = false
     /// Klockappen startades och kör passet.
     private(set) var watchStarted = false
+    /// Coachens personliga repliker, om de hunnit hämtas.
+    private(set) var brief: RunBrief?
+    @ObservationIgnored private var openingSpoken = false
+
+    /// Stegen som text, i den ordning de leds – underlag till coachens repliker.
+    var stepDescriptions: [String] {
+        steps.map { RunSpeech.intro($0, next: nil) }
+    }
+
+    /// Tar emot coachens repliker. Kommer de efter starten sägs öppningen direkt, så länge
+    /// personen fortfarande är på första steget.
+    func setBrief(_ brief: RunBrief) {
+        guard self.brief == nil, state != .finished else { return }
+        self.brief = brief
+        if state == .running || state == .paused, !openingSpoken, stepIndex == 0 {
+            speakOpening()
+            if let line = brief.line(forStep: 0) { voice.say(line) }
+        }
+    }
+
+    private func speakOpening() {
+        guard let brief else { return }
+        openingSpoken = true
+        voice.say(brief.opening)
+    }
 
     /// Pulsen från klockan, om den är färsk.
     var heartRate: Double? { liveHeartRate.current }
@@ -162,7 +187,10 @@ final class RunSession {
         lastTick = .now
         // GPS-uppdateringarna håller också appen igång med låst skärm, även på löpband.
         tracker.start()
-        voice.say("Nu kör vi. \(workout.title). \(RunSpeech.intro(first, next: nextStep))")
+        voice.say("Nu kör vi. \(workout.title).")
+        speakOpening()
+        voice.say(RunSpeech.intro(first, next: nextStep))
+        if let line = brief?.line(forStep: 0) { voice.say(line) }
         Task {
             let activity: HKWorkoutActivityType = workout.activity == .walking ? .walking : .running
             watchStarted = await liveHeartRate.startWatchWorkout(activity: activity, outdoor: usesGPS)
@@ -208,6 +236,7 @@ final class RunSession {
         if !fromWatch { Task { await liveHeartRate.send(.end) } }
         voice.say(RunSpeech.summary(time: totalElapsed, distance: usesGPS ? totalDistance : nil,
                                     watchSaves: watchStarted))
+        if let finish = brief?.finish, !finish.isEmpty { voice.say(finish) }
     }
 
     /// Avbryter utan sammanfattning (när vyn stängs).
@@ -274,6 +303,7 @@ final class RunSession {
             return
         }
         voice.say(RunSpeech.intro(step, next: nextStep))
+        if let line = brief?.line(forStep: stepIndex) { voice.say(line) }
     }
 
     // MARK: - Röstcues

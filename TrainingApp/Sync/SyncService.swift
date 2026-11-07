@@ -277,3 +277,23 @@ private extension Array {
         stride(from: 0, to: count, by: size).map { Array(self[$0..<Swift.min($0 + size, count)]) }
     }
 }
+
+// MARK: - Röstcoachens repliker
+
+extension SyncService {
+    /// Coachens personliga repliker inför ett löppass. `steps` är passets steg i den ordning
+    /// röstcoachen leder dem; replikerna pekar på steg med index i listan.
+    func fetchRunBrief(title: String, date: String, steps: [String]) async throws -> RunBrief {
+        guard let client else { throw SyncError.notConfigured }
+        guard isSignedIn else { throw SyncError.notSignedIn }
+        struct Body: Encodable {
+            let title: String
+            let date: String
+            let steps: [String]
+        }
+        return try await client.functions.invoke(
+            "run-brief",
+            options: FunctionInvokeOptions(body: Body(title: title, date: date, steps: steps))
+        )
+    }
+}

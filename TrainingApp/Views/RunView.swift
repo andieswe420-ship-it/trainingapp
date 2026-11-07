@@ -4,7 +4,11 @@ import SwiftUI
 /// fylls som ringen i appikonen.
 struct RunView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(SyncService.self) private var sync
     @State private var session: RunSession
+    @State private var briefState: BriefState = .idle
+
+    private enum BriefState { case idle, loading, ready, failed }
     @AppStorage(RunVoice.preferenceKey) private var voiceIdentifier = ""
 
     init(workout: PlannedWorkout, maxHeartRate: Double?) {
@@ -18,7 +22,8 @@ struct RunView: View {
                     finishedView
                 } else {
                     stepRing
-                    statsCard
+                    // Före start är alla nyckeltal noll – platsen behövs för coachens replik och röstvalet.
+                    if session.state != .ready { statsCard }
                     Spacer(minLength: 0)
                     controls
                 }
@@ -41,6 +46,56 @@ struct RunView: View {
             }
         }
         .interactiveDismissDisabled(session.state == .running || session.state == .paused)
+        .task { await loadBrief() }
+    }
+
+    /// Hämtar coachens repliker medan personen gör sig redo. Misslyckas det körs passet utan.
+    private func loadBrief() async {
+        guard sync.isSignedIn, briefState == .idle else { return }
+        briefState = .loading
+        do {
+            let brief = try await sync.fetchRunBrief(
+                title: session.workout.title,
+                date: session.workout.date,
+                steps: session.stepDescriptions
+            )
+            session.setBrief(brief)
+            briefState = .ready
+        } catch {
+            briefState = .failed
+        }
+    }
+
+    @ViewBuilder
+    private var briefStatus: some View {
+        switch briefState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            HStack(spacing: 10) {
+                ProgressView()
+                Text("Coachen förbereder dina repliker…")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.secondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card()
+        case .ready:
+            if let opening = session.brief?.opening {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Coachen", systemImage: "quote.bubble.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.cyan)
+                    Text(opening)
+                        .font(.callout)
+                }
+                .card(raised: true)
+            }
+        case .failed:
+            Text("Passet körs utan coachens personliga repliker.")
+                .font(.caption)
+                .foregroundStyle(Theme.secondaryText)
+        }
     }
 
     // MARK: - Steget
@@ -129,6 +184,7 @@ struct RunView: View {
         switch session.state {
         case .ready:
             VStack(spacing: 14) {
+                briefStatus
                 voicePicker
                 Text("Runner's High på klockan startar passet automatiskt, skickar pulsen hit och sparar passet i Hälsa – starta inte Apples Träning-app samtidigt. Ta på dig hörlurarna; rösten sänker musiken när den pratar.")
                     .font(.caption)
