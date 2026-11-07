@@ -106,29 +106,104 @@ struct WorkoutListView: View {
     }
 
     private var list: some View {
-        List {
-            Section("Återhämtning & kondition") {
-                MetricsRow(metrics: health.metrics)
-            }
-            .themedRow()
+        ScrollView {
+            VStack(spacing: 20) {
+                VStack(spacing: 8) {
+                    SectionTitle("Återhämtning & kondition")
+                    MetricsRow(metrics: health.metrics)
+                        .card()
+                }
 
-            Section {
+                if let thisWeek = weeks.first, thisWeek.start == Self.weekStart(of: .now) {
+                    weekSummaryCard(thisWeek, title: "Den här veckan")
+                }
+
                 if health.workouts.isEmpty {
                     Text("Inga träningspass hittades. Kontrollera att appen har läsbehörighet i Hälsa → Delning → Appar.")
                         .font(.callout)
                         .foregroundStyle(Theme.secondaryText)
+                        .card()
                 } else {
-                    ForEach(health.workouts) { workout in
-                        WorkoutRow(workout: workout)
+                    LazyVStack(spacing: 20) {
+                        ForEach(weeks) { week in
+                            VStack(spacing: 8) {
+                                SectionTitle(weekTitle(week))
+                                VStack(spacing: 0) {
+                                    ForEach(week.workouts) { workout in
+                                        WorkoutRow(workout: workout)
+                                            .padding(.vertical, 10)
+                                        if workout.id != week.workouts.last?.id {
+                                            Divider().overlay(Theme.border)
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, -4)
+                                .card()
+                            }
+                        }
                     }
                 }
-            } header: {
-                Text("Senaste \(HealthKitManager.historyDays) dagarna (\(health.workouts.count) pass)")
-            } footer: {
+
                 Text(syncStatusText)
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
             }
-            .themedRow()
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
         }
+    }
+
+    // MARK: - Veckor
+
+    /// Passen grupperade per vecka (måndag–söndag), nyast först.
+    private struct Week: Identifiable {
+        let start: Date
+        let workouts: [WorkoutSummary]
+        var id: Date { start }
+        var minutes: Double { workouts.reduce(0) { $0 + $1.duration } / 60 }
+        var kilometers: Double { workouts.compactMap(\.distanceMeters).reduce(0, +) / 1000 }
+    }
+
+    private var weeks: [Week] {
+        Dictionary(grouping: health.workouts) { Self.weekStart(of: $0.start) }
+            .map { Week(start: $0.key, workouts: $0.value.sorted { $0.start > $1.start }) }
+            .sorted { $0.start > $1.start }
+    }
+
+    private static func weekStart(of date: Date) -> Date {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = .current
+        return calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? calendar.startOfDay(for: date)
+    }
+
+    private func weekSummaryCard(_ week: Week, title: String) -> some View {
+        VStack(spacing: 8) {
+            SectionTitle(title)
+            HStack {
+                MetricView(value: "\(week.workouts.count)", label: "Pass")
+                MetricView(value: Self.hoursText(week.minutes), label: "Tid")
+                MetricView(value: String(format: "%.1f", week.kilometers), label: "km")
+            }
+            .padding(.vertical, 4)
+            .card(raised: true)
+        }
+    }
+
+    private func weekTitle(_ week: Week) -> String {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = .current
+        let number = calendar.component(.weekOfYear, from: week.start)
+        let count = week.workouts.count == 1 ? "1 pass" : "\(week.workouts.count) pass"
+        return "Vecka \(number) · \(count) · \(Self.hoursText(week.minutes))"
+    }
+
+    /// "45 min" eller "2 h 10 min".
+    private static func hoursText(_ minutes: Double) -> String {
+        let total = Int(minutes.rounded())
+        if total < 60 { return "\(total) min" }
+        return total % 60 == 0 ? "\(total / 60) h" : "\(total / 60) h \(total % 60) min"
     }
 }
 

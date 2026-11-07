@@ -23,6 +23,9 @@ struct WorkoutRow: View {
 
             VStack(alignment: .trailing, spacing: 4) {
                 Label(Self.durationText(workout.duration), systemImage: "clock")
+                if let distance = workout.distanceMeters, distance > 100 {
+                    Label(String(format: "%.1f km", distance / 1000), systemImage: "location.north.fill")
+                }
                 Label(heartRateText, systemImage: "heart.fill")
                     .foregroundStyle(workout.averageHeartRate == nil ? .secondary : .primary)
             }
