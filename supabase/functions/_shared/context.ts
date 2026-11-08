@@ -116,7 +116,7 @@ export function clockTime(date: Date | string): string {
 }
 
 /** Måndag i veckan som `day` tillhör. */
-function weekStart(day: string): string {
+export function weekStart(day: string): string {
   const d = new Date(`${day}T12:00:00Z`);
   const offset = (d.getUTCDay() + 6) % 7;
   return addDays(day, -offset);

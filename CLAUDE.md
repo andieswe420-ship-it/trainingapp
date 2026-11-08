@@ -32,6 +32,7 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    Schemat ligger i `supabase/migrations/` – nya ändringar läggs som nya migrationsfiler.
    URL/nyckel läggs i `Config/Secrets.xcconfig` (gitignorerad), aldrig i koden.
 3. **AI-planerare** – Edge Function `plan-week` (`supabase/functions/plan-week/`).
+   Planen gäller alltid måndag–söndag: innevarande vecka (pass bara från idag), på söndagar nästa vecka.
    Appen anropar den (användarens JWT) → en rad med status `pending` skapas i
    `training_plans` och id:t returneras direkt → planen genereras i bakgrunden
    (`EdgeRuntime.waitUntil`) → raden blir `ready`/`failed`. `PlanStore` pollar raden.
