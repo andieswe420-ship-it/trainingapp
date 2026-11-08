@@ -20,7 +20,7 @@ const { $schema: _ignored, ...PLAN_JSON_SCHEMA } = z.toJSONSchema(PlanSchema, { 
 const SYSTEM_PROMPT = `Du är en erfaren uthållighetscoach som planerar träning för en enskild motionär.
 Du får hela personens träningshistorik och återhämtningsdata från Apple Watch för de senaste 90 dagarna
 (pass, HRV, vilopuls, sömn, steg, aktivitet, andning och handledstemperatur), och skapar ett
-träningsschema för de kommande 7 dagarna.
+träningsschema för en vecka, måndag–söndag.
 
 Så här resonerar du:
 - Bedöm först återhämtningen: jämför HRV, vilopuls och sömn senaste 7 dagarna mot baslinjen. Klart sänkt
@@ -77,14 +77,16 @@ export async function generatePlan(
       loadProfile(supabase, userId),
     ]);
     const today = dayKey(new Date());
+    // Planer för innevarande vecka börjar på måndag, men pass läggs bara från idag.
+    const firstDay = startDate > today ? startDate : today;
     const summary = `# Personens profil\n${describeProfile(profile)}\n\n# Data\n${buildSummary(data, today)}`;
-    const { plan, model, co2Grams } = await askModel(summary, startDate, endDate, notes);
+    const { plan, model, co2Grams } = await askModel(summary, startDate, endDate, firstDay, notes);
 
     const { error } = await supabase
       .from("training_plans")
       .update({
         status: "ready",
-        plan: { ...plan, workouts: cleanWorkouts(plan.workouts, startDate, endDate) },
+        plan: { ...plan, workouts: cleanWorkouts(plan.workouts, firstDay, endDate) },
         model,
         co2_grams: co2Grams,
         updated_at: new Date().toISOString(),
@@ -106,10 +108,14 @@ async function askModel(
   summary: string,
   startDate: string,
   endDate: string,
+  firstDay: string,
   notes: string,
 ): Promise<{ plan: Plan; model: string; co2Grams: number | null }> {
   const userContent = [
     `Planera träningen ${startDate} till ${endDate}.`,
+    firstDay > startDate
+      ? `Dagarna före ${firstDay} har redan passerat – lägg pass från och med ${firstDay} och ta hänsyn till vad som redan tränats den här veckan.`
+      : "",
     notes ? `\nPersonens önskemål för just den här perioden:\n${notes}` : "",
     `\n${summary}`,
   ].join("\n");

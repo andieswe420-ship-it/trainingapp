@@ -32,6 +32,7 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    Schemat ligger i `supabase/migrations/` – nya ändringar läggs som nya migrationsfiler.
    URL/nyckel läggs i `Config/Secrets.xcconfig` (gitignorerad), aldrig i koden.
 3. **AI-planerare** – Edge Function `plan-week` (`supabase/functions/plan-week/`).
+   Planen gäller alltid måndag–söndag: innevarande vecka (pass bara från idag), på söndagar nästa vecka.
    Appen anropar den (användarens JWT) → en rad med status `pending` skapas i
    `training_plans` och id:t returneras direkt → planen genereras i bakgrunden
    (`EdgeRuntime.waitUntil`) → raden blir `ready`/`failed`. `PlanStore` pollar raden.
@@ -61,7 +62,7 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    Delad serverkod ligger i `supabase/functions/_shared/` (kontext, schema, AI-anrop, auth).
    **AI-leverantör** (`_shared/ai.ts`, OpenAI-kompatibla chat completions) väljs med Edge Function-
    secrets: `AI_PROVIDER` = `openrouter` (standard) eller `berget` (Berget AI, Stockholm, med
-   `BERGET_API_KEY` och valfri `BERGET_MODEL`, standard `moonshotai/Kimi-K3`). Med Berget används
+   `BERGET_API_KEY` och valfri `BERGET_MODEL`, standard `moonshotai/Kimi-K3.1-Pro`). Med Berget används
    OpenRouter som reserv vid fel (inte vid timeout). Kolumnen `model` visar vilken modell som svarade
    (`berget/...`). `reasoning_effort` skickas till Berget – planer och trendanalys kör `low` (Kimi med fullt
    resonemang tar >100 s för en veckoplan, mot Edge Functions tidsgräns 150 s; med `low` ~30 s). Planer och
@@ -82,7 +83,7 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    `TrainingApp/Analysis/`) och skickar dem; AI:n skriver en övergripande analys, en kommentar
    per diagram (status positive/neutral/attention) och mönster. Sparas i `trend_insights` en gång
    per dag och period (`4w`/`3m`/`6m`); `force` skapar en ny. `InsightStore` pollar.
-   Deploy: `supabase functions deploy plan-week coach` och
+   Deploy: `supabase functions deploy plan-week coach insights run-brief` och
    `supabase functions deploy weekly-plans --no-verify-jwt` (eller Supabase MCP – ange då
    `import_map_path: deno.json` och skicka med `_shared`-filerna som `../_shared/<fil>`).
 4. **WorkoutKit** – `TrainingApp/Scheduling/WorkoutScheduling.swift`. `WorkoutPlanBuilder` översätter
@@ -117,6 +118,11 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    passet – starta inte Apples Träning-app samtidigt.
    Bakgrundslägen `location` och `audio` håller appen igång med låst skärm.
    Start: "Spring med röstcoach" på löp-/promenadpass i Plan-fliken (`RunView`).
+   **Coachens repliker:** när löpskärmen öppnas hämtar `RunView` repliker från Edge Function `run-brief`
+   (`SyncService.fetchRunBrief`, stegen som text, svar direkt – inte pending/poll): `opening` sägs vid start
+   (eller direkt om svaret kommer under första steget), `steps[index]` efter stegets instruktion och `finish`
+   efter sammanfattningen (`RunBrief`). Raden sparas i `run_briefs`; CO₂ syns som `run` ("Röstcoach") i
+   `ai_usage`. Misslyckas hämtningen körs passet utan repliker.
 
 ## Faser
 
@@ -133,8 +139,8 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
       form/belastning (TRIMP, kondition/trötthet/form, belastningskvot), aerob effektivitet
       (meter per hjärtslag), AI-analys och "Fråga coachen". 180 dagars historik från HealthKit.
 - [x] **Fas 4** – Schemaläggning med WorkoutKit (`WorkoutScheduling.swift`).
-- [ ] **Fas 5** – Röstcoach under löpning: steg-/tempocues i telefonen (klar), live-puls från
-      klockappen (klar), sedan personliga AI-repliker före passet.
+- [x] **Fas 5** – Röstcoach under löpning: steg-/tempocues i telefonen, live-puls från
+      klockappen och personliga AI-repliker (`run-brief`).
 
 ## Projektstruktur
 
@@ -142,7 +148,7 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
 project.yml                 XcodeGen-spec – ENDA källan för projektinställningar
 Config/                     App.xcconfig (incheckad) + Secrets.xcconfig (gitignorerad)
 supabase/migrations/        Databasschema (SQL)
-supabase/functions/         Edge Functions (plan-week, coach, weekly-plans, insights, _shared)
+supabase/functions/         Edge Functions (plan-week, coach, weekly-plans, insights, run-brief, _shared)
 TrainingApp/
   App/                      @main-app, AppDelegate (notiser), AppRouter (flikar), Notifications
   Analysis/                 TrendAnalysis (beräkningar), TrendSnapshot (nyckeltal till AI-analysen)

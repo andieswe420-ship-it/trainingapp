@@ -1,15 +1,16 @@
 import Foundation
 
-/// Ett färdigt AI-svar (coach, veckoplan eller trendanalys) från vyn `ai_usage`.
+/// Ett färdigt AI-svar (coach, veckoplan, trendanalys eller röstcoachens repliker) från vyn `ai_usage`.
 struct AIUsage: Decodable, Hashable, Sendable {
     enum Kind: String, Decodable, Sendable, CaseIterable {
-        case coach, plan, insight
+        case coach, plan, insight, run
 
         var label: String {
             switch self {
             case .coach: "Coach"
             case .plan: "Veckoplaner"
             case .insight: "Trendanalys"
+            case .run: "Röstcoach"
             }
         }
     }

@@ -278,7 +278,7 @@ struct PlanView: View {
                 }
                 .buttonStyle(store.plan == nil ? AnyButtonStyle(PrimaryButtonStyle()) : AnyButtonStyle(SecondaryButtonStyle()))
                 .disabled(store.isPlanning || health.state != .loaded)
-                Text("Planen gäller sju dagar från idag och följer veckoschemat i din profil. Dina senaste pass synkas först.")
+                Text("Planen gäller veckan måndag–söndag (på söndagar nästa vecka) och följer veckoschemat i din profil. Dina senaste pass synkas först.")
                     .font(.caption)
                     .foregroundStyle(Theme.secondaryText)
             }
