@@ -11,7 +11,7 @@ const REQUEST_TIMEOUT_MS = 300_000;
 
 /** OpenRouter: primär modell först; OpenRouter faller tillbaka på nästa vid fel eller överbelastning. */
 const OPENROUTER_MODELS = ["anthropic/claude-opus-5.5", "anthropic/claude-opus-5"];
-const DEFAULT_BERGET_MODEL = "moonshotai/Kimi-K3";
+const DEFAULT_BERGET_MODEL = "moonshotai/Kimi-K3.1-Pro";
 /** Bergets modeller har mindre kontextfönster än Claude – begränsa svarslängden. */
 const BERGET_MAX_TOKENS = 16384;
 

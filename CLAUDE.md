@@ -62,7 +62,7 @@ HealthKit  ──►  Supabase  ──►  AI-planerare  ──►  WorkoutKit  
    Delad serverkod ligger i `supabase/functions/_shared/` (kontext, schema, AI-anrop, auth).
    **AI-leverantör** (`_shared/ai.ts`, OpenAI-kompatibla chat completions) väljs med Edge Function-
    secrets: `AI_PROVIDER` = `openrouter` (standard) eller `berget` (Berget AI, Stockholm, med
-   `BERGET_API_KEY` och valfri `BERGET_MODEL`, standard `moonshotai/Kimi-K3`). Med Berget används
+   `BERGET_API_KEY` och valfri `BERGET_MODEL`, standard `moonshotai/Kimi-K3.1-Pro`). Med Berget används
    OpenRouter som reserv vid fel (inte vid timeout). Kolumnen `model` visar vilken modell som svarade
    (`berget/...`). `reasoning_effort` skickas till Berget – planer och trendanalys kör `low` (Kimi med fullt
    resonemang tar >100 s för en veckoplan, mot Edge Functions tidsgräns 150 s; med `low` ~30 s). Planer och
