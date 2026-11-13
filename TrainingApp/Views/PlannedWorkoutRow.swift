@@ -79,7 +79,7 @@ struct PlannedWorkoutRow: View {
             let meters = step.goalValue
             if meters >= 1000 {
                 let km = meters / 1000
-                return km == km.rounded() ? "\(Int(km)) km" : String(format: "%.1f km", km)
+                return km == km.rounded() ? "\(Int(km)) km" : "\(decimalText(km)) km"
             }
             return "\(Int(meters.rounded())) m"
         case .open:

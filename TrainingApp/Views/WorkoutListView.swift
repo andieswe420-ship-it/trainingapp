@@ -184,7 +184,7 @@ struct WorkoutListView: View {
             HStack {
                 MetricView(value: "\(week.workouts.count)", label: "Pass")
                 MetricView(value: Self.hoursText(week.minutes), label: "Tid")
-                MetricView(value: String(format: "%.1f", week.kilometers), label: "km")
+                MetricView(value: decimalText(week.kilometers), label: "km")
             }
             .padding(.vertical, 4)
             .card(raised: true)
@@ -195,6 +195,8 @@ struct WorkoutListView: View {
         var calendar = Calendar(identifier: .iso8601)
         calendar.timeZone = .current
         let number = calendar.component(.weekOfYear, from: week.start)
+        // Innevarande vecka sammanfattas redan i kortet ovanför.
+        if week.start == Self.weekStart(of: .now) { return "Vecka \(number)" }
         let count = week.workouts.count == 1 ? "1 pass" : "\(week.workouts.count) pass"
         return "Vecka \(number) · \(count) · \(Self.hoursText(week.minutes))"
     }

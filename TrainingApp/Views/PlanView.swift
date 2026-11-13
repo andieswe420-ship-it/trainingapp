@@ -84,12 +84,18 @@ struct PlanView: View {
 
     // MARK: - Veckan
 
+    /// Dagar (YYYY-MM-DD) med minst ett genomfört pass i Hälsa.
+    private var completedDays: Set<String> {
+        Set(health.workouts.map { PlanDate.string(from: $0.start) })
+    }
+
     /// M T O T F L S med en prick per dag: färgad efter intensitet, tom för vila, ring runt idag.
     private func weekStrip(plan: TrainingPlan, content: PlanContent) -> some View {
         HStack(spacing: 0) {
             ForEach(plan.days, id: \.self) { day in
                 let workouts = content.workouts.filter { $0.date == day }
                 let isToday = day == today
+                let isDone = completedDays.contains(day)
                 VStack(spacing: 8) {
                     Text(weekdayLetter(day))
                         .font(.caption.weight(.semibold))
@@ -109,12 +115,22 @@ struct PlanView: View {
                             .strokeBorder(Theme.cyan, lineWidth: isToday ? 2 : 0)
                             .frame(width: 38, height: 38)
                     )
+                    .overlay(alignment: .bottomTrailing) {
+                        if isDone {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white, Color.green)
+                                .offset(x: 6, y: 5)
+                                .accessibilityLabel("Genomfört")
+                        }
+                    }
                     Text(dayNumber(day))
                         .font(.caption2)
                         .foregroundStyle(day < today ? Theme.secondaryText.opacity(0.6) : Theme.secondaryText)
                 }
                 .frame(maxWidth: .infinity)
-                .opacity(day < today ? 0.55 : 1)
+                // Passerade dagar utan pass tonas ner; dagar med genomfört pass behåller färgen.
+                .opacity(day < today && !isDone ? 0.5 : 1)
             }
         }
         .padding(.vertical, 14)

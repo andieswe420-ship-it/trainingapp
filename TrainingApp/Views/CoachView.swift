@@ -151,7 +151,8 @@ struct CoachView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(Theme.backgroundTop.opacity(0.95))
+        // Helt täckande, även ner under flikraden – annars lyser chatten igenom skrivfältet.
+        .background(Theme.backgroundTop.ignoresSafeArea(edges: .bottom))
     }
 }
 
@@ -247,9 +248,7 @@ private struct ProposalCard: View {
             Label("Förslag på ändrad plan", systemImage: "calendar.badge.clock")
                 .font(.headline)
                 .foregroundStyle(Theme.cyan)
-            Text(proposal.reason)
-                .font(.callout)
-
+            // Motiveringen visas inte här: coachens bubbla ovanför säger redan samma sak.
             ForEach(proposal.days, id: \.self) { day in
                 let workouts = proposal.workouts.filter { $0.date == day }
                 VStack(alignment: .leading, spacing: 2) {
@@ -259,12 +258,15 @@ private struct ProposalCard: View {
                         Text("Vila")
                             .font(.subheadline)
                             .foregroundStyle(Theme.secondaryText)
+                            .padding(.leading, 32)
                     } else {
                         ForEach(workouts) { workout in
-                            Label(
-                                "\(workout.title) · ca \(Int(workout.estimatedMinutes.rounded())) min",
-                                systemImage: workout.activity.symbolName
-                            )
+                            HStack(spacing: 8) {
+                                Image(systemName: workout.activity.symbolName)
+                                    .foregroundStyle(Theme.cyan)
+                                    .frame(width: 24)
+                                Text("\(workout.title) · ca \(Int(workout.estimatedMinutes.rounded())) min")
+                            }
                             .font(.subheadline)
                         }
                     }
@@ -297,6 +299,6 @@ private struct ProposalCard: View {
 
     private func dayTitle(_ day: String) -> String {
         guard let date = PlanDate.date(from: day) else { return day }
-        return date.formatted(.dateTime.weekday(.wide).day().month(.abbreviated))
+        return date.formatted(.dateTime.weekday(.wide).day().month(.abbreviated)).capitalized
     }
 }

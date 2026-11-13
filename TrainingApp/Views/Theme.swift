@@ -69,6 +69,11 @@ extension View {
     }
 }
 
+/// Decimaltal med svenskt decimalkomma, t.ex. "10,4".
+func decimalText(_ value: Double, decimals: Int = 1) -> String {
+    value.formatted(.number.precision(.fractionLength(decimals)).locale(Locale(identifier: "sv_SE")))
+}
+
 /// Liten rubrik ovanför ett kort.
 struct SectionTitle: View {
     let text: String
